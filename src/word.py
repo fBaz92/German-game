@@ -1,0 +1,1 @@
+# Classi Word, Noun, Verb, Adjective 
