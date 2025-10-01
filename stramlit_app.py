@@ -156,7 +156,7 @@ if page == "🎮 Gioca":
                 mode = "Traduzione"
                 st.selectbox("Modalità", ["Traduzione"], disabled=True)
         
-        num_questions = st.slider("Numero di domande", 5, 30, 10)
+        num_questions = st.slider("Numero di domande", 5, 100, 10)
         
         if st.button("▶️ Inizia Partita", type="primary", use_container_width=True):
             start_game(game_type, mode, num_questions)

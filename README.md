@@ -27,9 +27,23 @@ german-game/
 ### Installazione
 
 1. Assicurati di avere Python 3.7+ installato
-2. Clona o scarica il progetto
-3. Crea i file CSV nella cartella `assets/` (vedi formato sotto)
-4. (Opzionale, per interfaccia grafica) Installa Streamlit:
+2. Crea e attiva un ambiente virtuale (consigliato):
+
+   macOS/Linux:
+   ```bash
+   python3 -m venv .venv
+   source .venv/bin/activate
+   ```
+
+   Windows (PowerShell):
+   ```powershell
+   py -m venv .venv
+   .venv\Scripts\Activate.ps1
+   ```
+
+3. Clona o scarica il progetto
+4. Crea i file CSV nella cartella `assets/` (vedi formato sotto)
+5. (Opzionale, per interfaccia grafica) Installa Streamlit all'interno del venv attivo:
 
 ```bash
 pip install streamlit
