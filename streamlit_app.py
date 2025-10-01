@@ -2,7 +2,6 @@ import streamlit as st
 import pandas as pd
 from datetime import datetime
 from src.data_loader import DataLoader
-from src.game_manager import GameManager
 from src.database import DatabaseManager
 import random
 
@@ -23,6 +22,7 @@ if 'game_started' not in st.session_state:
     st.session_state.game_type = None
     st.session_state.mode = None
 
+
 def reset_game():
     """Reset dello stato del gioco"""
     st.session_state.game_started = False
@@ -32,6 +32,7 @@ def reset_game():
     st.session_state.questions = []
     st.session_state.game_type = None
     st.session_state.mode = None
+
 
 def start_game(game_type, mode, num_questions=10):
     """Inizia una nuova partita"""
@@ -54,6 +55,7 @@ def start_game(game_type, mode, num_questions=10):
     st.session_state.score = 0
     st.session_state.errors = []
 
+
 def check_answer(user_answer, correct_answer, word_obj):
     """Verifica la risposta e calcola il punteggio"""
     penalty = 0
@@ -62,7 +64,7 @@ def check_answer(user_answer, correct_answer, word_obj):
         return True, 0
     
     # Controlla errori di maiuscola nei sostantivi
-    if st.session_state.game_type == "Nomi" and st.session_state.mode == "Traduzione":
+    if st.session_state.game_type == "Nomi" and st.session_state.mode.startswith("Articoli") is False:
         if user_answer.strip().lower() == correct_answer.strip().lower():
             penalty = 1.0  # Errore completo per maiuscola
             return False, penalty
@@ -82,12 +84,13 @@ def check_answer(user_answer, correct_answer, word_obj):
     
     return False, 1.0  # Errore completo
 
+
 def show_stats():
     """Mostra statistiche dal database"""
     st.header("📊 Statistiche")
     
     db = DatabaseManager()
-    games = db.get_all_games()
+    games = db.get_game_history(limit=100)
     
     if games:
         df = pd.DataFrame(games, columns=['ID', 'Data', 'Tipo', 'Modalità', 'Domande', 'Corrette', 'Successo%'])
@@ -175,27 +178,21 @@ if page == "🎮 Gioca":
             progress = current_idx / len(st.session_state.questions)
             st.progress(progress)
             
+            # Determina se è modalità articoli
+            is_articles = st.session_state.mode.startswith("Articoli")
+            
             # Mostra la domanda
-            if st.session_state.mode == "Traduzione":
-                if st.session_state.game_type == "Nomi":
-                    question_text = word.meaning
-                    correct_answer = word.word
-                    st.info(f"**Traduci in tedesco:** {question_text}")
-                elif st.session_state.game_type == "Verbi":
-                    question_text = word.meaning
-                    correct_answer = word.verb
-                    st.info(f"**Traduci in tedesco:** {question_text}")
-                else:  # Aggettivi
-                    question_text = word.meaning
-                    correct_answer = word.adjective
-                    st.info(f"**Traduci in tedesco:** {question_text}")
+            if not is_articles:  # Traduzione
+                question_text = word.italian
+                correct_answer = word.german
+                st.info(f"**Traduci in tedesco:** {question_text}")
             else:  # Articoli
-                question_text = word.word
+                question_text = word.german
                 correct_answer = word.article
                 st.info(f"**Qual è l'articolo di:** {question_text}")
             
             # Input risposta
-            if st.session_state.mode == "Articoli (der/die/das)":
+            if is_articles:
                 user_answer = st.radio(
                     "Seleziona l'articolo:",
                     ["der", "die", "das"],
@@ -220,11 +217,12 @@ if page == "🎮 Gioca":
                             st.session_state.score += 1
                         else:
                             st.error(f"❌ Sbagliato! Risposta corretta: **{correct_answer}**")
-                            error_type = "maiuscola" if penalty == 1.0 and st.session_state.mode == "Traduzione" else "umlaut" if penalty == 0.5 else "completo"
+                            error_type = "maiuscola" if penalty == 1.0 and not is_articles else "umlaut" if penalty == 0.5 else "completo"
                             st.session_state.errors.append({
-                                'word_german': correct_answer,
-                                'word_italian': question_text,
+                                'word_german': word.german if not is_articles else word.german,
+                                'word_italian': word.italian if not is_articles else word.italian,
                                 'user_answer': user_answer,
+                                'correct_answer': correct_answer,
                                 'penalty': penalty,
                                 'error_type': error_type
                             })
@@ -238,9 +236,10 @@ if page == "🎮 Gioca":
             with col2:
                 if st.button("⏩ Salta", use_container_width=True):
                     st.session_state.errors.append({
-                        'word_german': correct_answer,
-                        'word_italian': question_text,
+                        'word_german': word.german,
+                        'word_italian': word.italian,
                         'user_answer': '(saltata)',
+                        'correct_answer': correct_answer,
                         'penalty': 1.0,
                         'error_type': 'saltata'
                     })
@@ -275,23 +274,13 @@ if page == "🎮 Gioca":
             
             # Salva nel database
             db = DatabaseManager()
-            game_id = db.save_game(
+            db.save_game(
                 game_type=st.session_state.game_type,
                 mode=st.session_state.mode,
                 total_questions=total_questions,
                 correct_answers=int(current_score),
-                success_rate=success_rate
+                errors=st.session_state.errors,
             )
-            
-            for error in st.session_state.errors:
-                db.save_error(
-                    game_id=game_id,
-                    word_german=error['word_german'],
-                    word_italian=error['word_italian'],
-                    user_answer=error['user_answer'],
-                    correct_answer=error['word_german'],
-                    penalty=error['penalty']
-                )
             
             st.success("💾 Partita salvata nel database!")
             
@@ -307,36 +296,38 @@ elif page == "📊 Statistiche":
 else:
     st.header("ℹ️ Informazioni")
     
-    st.markdown("""
-    ### Come Giocare
-    
-    1. **Scegli la categoria**: Nomi, Verbi o Aggettivi
-    2. **Seleziona la modalità**:
-       - **Traduzione**: Traduci dall'italiano al tedesco
-       - **Articoli** (solo per nomi): Indovina l'articolo corretto (der/die/das)
-    3. **Rispondi alle domande** e verifica le tue risposte
-    
-    ### Sistema di Punteggio
-    
-    - ✅ **Risposta corretta**: +1 punto
-    - ❌ **Errore maiuscola** (nei nomi): -1 punto
-    - ⚠️ **Errore umlaut** (ä, ö, ü, ß): -0.5 punti
-    - ❌ **Errore completo**: -1 punto
-    
-    ### Statistiche
-    
-    Tutte le partite vengono salvate in un database locale. Puoi consultare:
-    - Storico delle partite
-    - Percentuale di successo
-    - Parole più sbagliate
-    
-    ### Consigli
-    
-    - 💡 Fai attenzione alle maiuscole nei sostantivi tedeschi
-    - 💡 Ricorda le umlaut (ä, ö, ü, ß)
-    - 💡 Ripassa le parole più sbagliate nella sezione Statistiche
-    
-    ---
-    
-    **Viel Erfolg beim Deutschlernen! 🎓**
-    """)
+    st.markdown(
+        """
+        ### Come Giocare
+        
+        1. **Scegli la categoria**: Nomi, Verbi o Aggettivi
+        2. **Seleziona la modalità**:
+           - **Traduzione**: Traduci dall'italiano al tedesco
+           - **Articoli** (solo per nomi): Indovina l'articolo corretto (der/die/das)
+        3. **Rispondi alle domande** e verifica le tue risposte
+        
+        ### Sistema di Punteggio
+        
+        - ✅ **Risposta corretta**: +1 punto
+        - ❌ **Errore maiuscola** (nei nomi): -1 punto
+        - ⚠️ **Errore umlaut** (ä, ö, ü, ß): -0.5 punti
+        - ❌ **Errore completo**: -1 punto
+        
+        ### Statistiche
+        
+        Tutte le partite vengono salvate in un database locale. Puoi consultare:
+        - Storico delle partite
+        - Percentuale di successo
+        - Parole più sbagliate
+        
+        ### Consigli
+        
+        - 💡 Fai attenzione alle maiuscole nei sostantivi tedeschi
+        - 💡 Ricorda le umlaut (ä, ö, ü, ß)
+        - 💡 Ripassa le parole più sbagliate nella sezione Statistiche
+        
+        ---
+        
+        **Viel Erfolg beim Deutschlernen! 🎓**
+        """
+    )
