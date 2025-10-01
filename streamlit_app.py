@@ -470,7 +470,10 @@ if page == "🎮 Gioca":
                                     'penalty': penalty,
                                     'error_type': error_type
                                 })
-                                st.session_state.score -= penalty
+                                # Sistema di punteggio cumulativo: 0.5 punti per mezzo errore, 0 per errore completo
+                                if penalty == 0.5:
+                                    st.session_state.score += 0.5
+                                # 0 punti per errore completo (penalty == 1.0)
                                 st.session_state.feedback_by_q[current_idx] = {
                                     'ok': False,
                                     'message': f"❌ Sbagliato! Risposta corretta: {correct_answer}"
@@ -502,7 +505,10 @@ if page == "🎮 Gioca":
                                     'penalty': penalty,
                                     'error_type': error_type
                                 })
-                                st.session_state.score -= penalty
+                                # Sistema di punteggio cumulativo: 0.5 punti per mezzo errore, 0 per errore completo
+                                if penalty == 0.5:
+                                    st.session_state.score += 0.5
+                                # 0 punti per errore completo (penalty == 1.0)
                                 st.session_state.feedback_by_q[current_idx] = {
                                     'ok': False,
                                     'message': f"❌ Sbagliato! Risposta corretta: {correct_answer}"
@@ -519,7 +525,7 @@ if page == "🎮 Gioca":
                                 'penalty': 1.0,
                                 'error_type': 'rivelata'
                             })
-                            st.session_state.score -= 1.0
+                            # "Vedi risposta" = 0 punti
                             st.session_state.feedback_by_q[current_idx] = {
                                 'ok': False,
                                 'message': f"👁️ Risposta: {correct_answer} (contata come errore)"
@@ -549,7 +555,8 @@ if page == "🎮 Gioca":
             
             total_questions = len(st.session_state.questions)
             max_score = total_questions
-            current_score = max(0, st.session_state.score)
+            # Punteggio cumulativo: 1 punto per risposta corretta, 0.5 per mezzo errore, 0 per errore completo
+            current_score = st.session_state.score
             success_rate = (current_score / max_score * 100) if max_score > 0 else 0
             
             col1, col2, col3 = st.columns(3)
@@ -745,7 +752,10 @@ elif page == "📚 Studio":
                                     'penalty': penalty,
                                     'error_type': error_type
                                 })
-                                st.session_state.score -= penalty
+                                # Sistema di punteggio cumulativo: 0.5 punti per mezzo errore, 0 per errore completo
+                                if penalty == 0.5:
+                                    st.session_state.score += 0.5
+                                # 0 punti per errore completo (penalty == 1.0)
                                 st.session_state.feedback_by_q[current_idx] = {
                                     'ok': False,
                                     'message': f"❌ Sbagliato! Risposta corretta: {correct_answer}"
@@ -777,7 +787,10 @@ elif page == "📚 Studio":
                                     'penalty': penalty,
                                     'error_type': error_type
                                 })
-                                st.session_state.score -= penalty
+                                # Sistema di punteggio cumulativo: 0.5 punti per mezzo errore, 0 per errore completo
+                                if penalty == 0.5:
+                                    st.session_state.score += 0.5
+                                # 0 punti per errore completo (penalty == 1.0)
                                 st.session_state.feedback_by_q[current_idx] = {
                                     'ok': False,
                                     'message': f"❌ Sbagliato! Risposta corretta: {correct_answer}"
@@ -794,7 +807,7 @@ elif page == "📚 Studio":
                                 'penalty': 1.0,
                                 'error_type': 'rivelata'
                             })
-                            st.session_state.score -= 1.0
+                            # "Vedi risposta" = 0 punti
                             st.session_state.feedback_by_q[current_idx] = {
                                 'ok': False,
                                 'message': f"👁️ Risposta: {correct_answer} (contata come errore)"
@@ -825,7 +838,8 @@ elif page == "📚 Studio":
             
             total_questions = len(st.session_state.questions)
             max_score = total_questions
-            current_score = max(0, st.session_state.score)
+            # Punteggio cumulativo: 1 punto per risposta corretta, 0.5 per mezzo errore, 0 per errore completo
+            current_score = st.session_state.score
             success_rate = (current_score / max_score * 100) if max_score > 0 else 0
             
             col1, col2, col3 = st.columns(3)
@@ -990,7 +1004,10 @@ elif page == "🔄 Ripasso":
                                     'penalty': penalty,
                                     'error_type': error_type
                                 })
-                                st.session_state.score -= penalty
+                                # Sistema di punteggio cumulativo: 0.5 punti per mezzo errore, 0 per errore completo
+                                if penalty == 0.5:
+                                    st.session_state.score += 0.5
+                                # 0 punti per errore completo (penalty == 1.0)
                                 st.session_state.feedback_by_q[current_idx] = {
                                     'ok': False,
                                     'message': f"❌ Sbagliato! Risposta corretta: {correct_answer}"
@@ -1022,7 +1039,10 @@ elif page == "🔄 Ripasso":
                                     'penalty': penalty,
                                     'error_type': error_type
                                 })
-                                st.session_state.score -= penalty
+                                # Sistema di punteggio cumulativo: 0.5 punti per mezzo errore, 0 per errore completo
+                                if penalty == 0.5:
+                                    st.session_state.score += 0.5
+                                # 0 punti per errore completo (penalty == 1.0)
                                 st.session_state.feedback_by_q[current_idx] = {
                                     'ok': False,
                                     'message': f"❌ Sbagliato! Risposta corretta: {correct_answer}"
@@ -1039,7 +1059,7 @@ elif page == "🔄 Ripasso":
                                 'penalty': 1.0,
                                 'error_type': 'rivelata'
                             })
-                            st.session_state.score -= 1.0
+                            # "Vedi risposta" = 0 punti
                             st.session_state.feedback_by_q[current_idx] = {
                                 'ok': False,
                                 'message': f"👁️ Risposta: {correct_answer} (contata come errore)"
@@ -1070,7 +1090,8 @@ elif page == "🔄 Ripasso":
             
             total_questions = len(st.session_state.questions)
             max_score = total_questions
-            current_score = max(0, st.session_state.score)
+            # Punteggio cumulativo: 1 punto per risposta corretta, 0.5 per mezzo errore, 0 per errore completo
+            current_score = st.session_state.score
             success_rate = (current_score / max_score * 100) if max_score > 0 else 0
             
             col1, col2, col3 = st.columns(3)
