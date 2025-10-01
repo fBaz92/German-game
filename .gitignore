@@ -1,0 +1,19 @@
+# Python-specific files
+*.pyc
+__pycache__/
+.Python
+env/
+venv/
+*.egg-info/
+.coverage
+htmlcov/
+dist/
+build/
+
+# macOS-specific files
+.DS_Store
+.Trashes
+._*
+.Spotlight-V100
+
+.db
