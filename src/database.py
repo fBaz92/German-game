@@ -1,3 +1,4 @@
+# ==================== src/database.py ====================
 
 import sqlite3
 from datetime import datetime
@@ -52,7 +53,7 @@ class DatabaseManager:
         
         Args:
             game_type: str ('Nomi', 'Verbi', 'Aggettivi')
-            mode: str ('Traduzione', 'Articoli')
+            mode: str ('Traduzione', 'Articoli', 'Coniugazioni')
             total_questions: int
             correct_answers: int
             errors: list di dict con chiavi:
@@ -129,3 +130,75 @@ class DatabaseManager:
         conn.close()
         
         return results
+    
+    def get_most_common_errors_by_type(self, game_type, min_errors=2):
+        """
+        Ottiene le parole più sbagliate per una specifica categoria
+        
+        Args:
+            game_type: 'Nomi', 'Verbi', o 'Aggettivi'
+            min_errors: numero minimo di errori
+        
+        Returns:
+            list di tuple (word_german, word_italian, error_count)
+        """
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.cursor()
+        
+        cursor.execute("""
+            SELECT e.word_german, e.word_italian, COUNT(*) as error_count
+            FROM errors e
+            JOIN games g ON e.game_id = g.id
+            WHERE g.game_type LIKE ?
+            GROUP BY e.word_german, e.word_italian
+            HAVING error_count >= ?
+            ORDER BY error_count DESC
+        """, (f"%{game_type}%", min_errors))
+        
+        results = cursor.fetchall()
+        conn.close()
+        
+        return results
+    
+    def get_stats_by_type(self, game_type):
+        """Ottiene statistiche per un tipo di gioco"""
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.cursor()
+        
+        cursor.execute("""
+            SELECT 
+                COUNT(*) as games,
+                AVG(success_rate) as avg_success,
+                SUM(total_questions) as total_questions
+            FROM games
+            WHERE game_type LIKE ?
+        """, (f"%{game_type}%",))
+        
+        result = cursor.fetchone()
+        conn.close()
+        
+        if result and result[0] > 0:
+            return {
+                'games': result[0],
+                'avg_success': result[1],
+                'total_questions': result[2]
+            }
+        return None
+    
+    def get_all_games(self):
+        """Ottiene tutte le partite (per Streamlit)"""
+        return self.get_game_history(limit=10000)
+    
+    def save_error(self, game_id, word_german, word_italian, user_answer, correct_answer, penalty):
+        """Salva un singolo errore (per Streamlit)"""
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.cursor()
+        
+        cursor.execute("""
+            INSERT INTO errors (game_id, word_german, word_italian, 
+                              user_answer, correct_answer, penalty)
+            VALUES (?, ?, ?, ?, ?, ?)
+        """, (game_id, word_german, word_italian, user_answer, correct_answer, penalty))
+        
+        conn.commit()
+        conn.close()
