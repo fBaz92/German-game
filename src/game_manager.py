@@ -145,21 +145,26 @@ class GameManager:
         print("\n" + "="*50)
         print(f"🎮 MODALITÀ: {mode.upper()}")
         print("="*50)
-        print("💡 Suggerimento: Puoi interrompere in qualsiasi momento rispondendo 'n'")
+        print("💡 Suggerimento: Digita 'n' per terminare in qualsiasi momento")
         
         for i, word in enumerate(words, 1):
             print(f"\n📝 Domanda {i}:")
             
             if mode == 'Traduzione':
-                is_correct = self._ask_translation(word)
+                result = self._ask_translation(word)
             elif mode == 'Articoli':
-                is_correct = self._ask_article(word)
+                result = self._ask_article(word)
             elif mode == 'Coniugazioni':
-                is_correct = self._ask_conjugation(word)
+                result = self._ask_conjugation(word)
             
-            # Chiedi se continuare
-            if not self._ask_continue():
+            # Controlla se l'utente vuole terminare
+            if result == 'quit':
+                print("\n👋 Gioco terminato dall'utente.")
                 break
+            
+            # Mostra suggerimento per continuare (solo se non è l'ultima domanda)
+            if i < len(words):
+                print("(digita n per terminare)")
         
         print("\n" + "="*50)
     
@@ -167,6 +172,10 @@ class GameManager:
         """Chiede la traduzione di una parola"""
         print(f"Come si dice '{word.italian}' in tedesco?")
         user_answer = input("➤ La tua risposta: ").strip()
+        
+        # Controlla se l'utente vuole terminare
+        if user_answer.lower() == 'n':
+            return 'quit'
         
         is_correct, penalty, feedback = word.check_answer(user_answer)
         print(feedback)
@@ -190,6 +199,10 @@ class GameManager:
         """Chiede l'articolo di un sostantivo"""
         print(f"Articolo di '{word.german}'? (der/die/das)")
         user_answer = input("➤ La tua risposta (der/die/das): ").strip()
+        
+        # Controlla se l'utente vuole terminare
+        if user_answer.lower() == 'n':
+            return 'quit'
         
         is_correct, penalty, feedback = word.check_article(user_answer)
         print(feedback)
@@ -223,6 +236,10 @@ class GameManager:
         
         user_answer = input("➤ La tua risposta: ").strip()
         
+        # Controlla se l'utente vuole terminare
+        if user_answer.lower() == 'n':
+            return 'quit'
+        
         self.total_count += 1
         
         if user_answer == correct_answer:
@@ -240,10 +257,6 @@ class GameManager:
             })
             return False
     
-    def _ask_continue(self):
-        """Chiede se continuare"""
-        response = input("\nContinuare? (s/n): ").strip().lower()
-        return response == 's'
     
     def _show_results(self, game_type, mode):
         """Mostra i risultati finali"""

@@ -16,4 +16,5 @@ build/
 ._*
 .Spotlight-V100
 
-.db
+# Database
+*.db
