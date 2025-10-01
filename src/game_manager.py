@@ -47,6 +47,11 @@ class GameManager:
             self.review.start_review(game_type, mode)
             return
         
+        if main_mode == 'studio':
+            # Modalità studio
+            self._start_study_mode(game_type)
+            return
+        
         # Modalità normale
         # Carica i dati
         words = self._load_words(game_type)
@@ -74,58 +79,145 @@ class GameManager:
     
     def _choose_main_mode(self):
         """Chiede la modalità principale"""
-        print("\nCosa vuoi fare?")
-        print("1. Partita normale")
-        print("2. Ripasso errori")
-        print("3. Visualizza statistiche")
+        while True:
+            print("\nCosa vuoi fare?")
+            print("1. Partita normale")
+            print("2. Modalità studio")
+            print("3. Ripasso errori")
+            print("4. Visualizza statistiche")
+            
+            choice = input("\nScelta (1/2/3/4): ").strip()
+            
+            modes = {
+                '1': 'normale',
+                '2': 'studio',
+                '3': 'ripasso',
+                '4': 'statistiche'
+            }
+            
+            if choice in modes:
+                return modes[choice]
+            else:
+                print("❌ Comando non valido! Scegli tra 1, 2, 3 o 4.")
+    
+    def _start_study_mode(self, game_type):
+        """Avvia la modalità studio"""
+        print("\n" + "="*50)
+        print("📚 MODALITÀ STUDIO")
+        print("="*50)
         
-        choice = input("\nScelta (1/2/3): ").strip()
+        # Carica i dati
+        words = self._load_words(game_type)
+        if not words:
+            return
         
-        modes = {
-            '1': 'normale',
-            '2': 'ripasso',
-            '3': 'statistiche'
-        }
+        print(f"\n✅ Caricati {len(words)} {game_type.lower()}")
         
-        return modes.get(choice, 'normale')
+        # Chiedi quanti ne vuole studiare
+        max_words = len(words)
+        while True:
+            try:
+                study_count = input(f"\n📖 Quanti {game_type.lower()} vuoi studiare? (1-{max_words}): ").strip()
+                study_count = int(study_count)
+                if 1 <= study_count <= max_words:
+                    break
+                else:
+                    print(f"❌ Comando non valido! Inserisci un numero tra 1 e {max_words}")
+            except ValueError:
+                print("❌ Comando non valido! Inserisci un numero valido (es. 5)")
+        
+        # Mescola e seleziona le parole
+        random.shuffle(words)
+        study_words = words[:study_count]
+        
+        # Mostra l'elenco di studio
+        self._show_study_list(study_words, game_type)
+        
+        # Chiedi se è pronto per la partita
+        ready = input("\n🎮 Sei pronto per la partita? (s/n): ").strip().lower()
+        if ready == 's':
+            # Scelta modalità di gioco
+            mode = self._choose_mode(game_type)
+            if mode:
+                # Avvia la partita con le parole studiate
+                self._play(study_words, game_type, mode)
+                # Mostra risultati
+                self._show_results(game_type, mode)
+        else:
+            print("\n👋 Studio completato. Alla prossima!")
+    
+    def _show_study_list(self, words, game_type):
+        """Mostra l'elenco di studio"""
+        print("\n" + "="*50)
+        print("📋 ELENCO DI STUDIO")
+        print("="*50)
+        
+        for i, word in enumerate(words, 1):
+            print(f"\n{i:2d}. {word.italian} → {word.german}")
+            
+            if game_type == 'Nomi' and hasattr(word, 'article'):
+                print(f"    Articolo: {word.article}")
+            elif game_type == 'Verbi':
+                if hasattr(word, 'prateritum') and word.prateritum:
+                    print(f"    Präteritum: {word.prateritum}")
+                if hasattr(word, 'participio') and word.participio:
+                    print(f"    Participio: {word.participio}")
+        
+        print("\n" + "="*50)
+        print("💡 Studia bene queste parole, poi inizierà la partita!")
+        print("="*50)
     
     def _choose_game_type(self):
         """Chiede all'utente cosa vuole studiare"""
-        print("\nCosa vuoi studiare?")
-        print("1. Nomi (Sostantivi)")
-        print("2. Verbi")
-        print("3. Aggettivi")
-        
-        choice = input("\nScelta (1/2/3): ").strip()
-        
-        game_types = {
-            '1': 'Nomi',
-            '2': 'Verbi',
-            '3': 'Aggettivi'
-        }
-        
-        return game_types.get(choice)
+        while True:
+            print("\nCosa vuoi studiare?")
+            print("1. Nomi (Sostantivi)")
+            print("2. Verbi")
+            print("3. Aggettivi")
+            
+            choice = input("\nScelta (1/2/3): ").strip()
+            
+            game_types = {
+                '1': 'Nomi',
+                '2': 'Verbi',
+                '3': 'Aggettivi'
+            }
+            
+            if choice in game_types:
+                return game_types[choice]
+            else:
+                print("❌ Comando non valido! Scegli tra 1, 2 o 3.")
     
     def _choose_mode(self, game_type):
         """Chiede la modalità di gioco"""
-        print("\nScegli modalità:")
-        print("1. Traduzione (Italiano → Tedesco)")
-        
-        if game_type == 'Nomi':
-            print("2. Articoli (der/die/das)")
-        elif game_type == 'Verbi':
-            print("2. Coniugazioni (Präteritum/Participio)")
-        
-        choice = input("\nModalità (1/2): ").strip()
-        
-        if choice == '1':
-            return 'Traduzione'
-        elif choice == '2' and game_type == 'Nomi':
-            return 'Articoli'
-        elif choice == '2' and game_type == 'Verbi':
-            return 'Coniugazioni'
-        
-        return None
+        while True:
+            print("\nScegli modalità:")
+            print("1. Traduzione (Italiano → Tedesco)")
+            
+            if game_type == 'Nomi':
+                print("2. Articoli (der/die/das)")
+                valid_choices = ['1', '2']
+            elif game_type == 'Verbi':
+                print("2. Coniugazioni (Präteritum/Participio)")
+                valid_choices = ['1', '2']
+            else:  # Aggettivi
+                valid_choices = ['1']
+            
+            choice = input("\nModalità (1/2): ").strip()
+            
+            if choice not in valid_choices:
+                if game_type == 'Aggettivi':
+                    print("❌ Comando non valido! Scegli 1 (solo traduzione disponibile).")
+                else:
+                    print("❌ Comando non valido! Scegli tra 1 o 2.")
+                continue
+            
+            if choice == '1':
+                return 'Traduzione'
+            elif choice == '2' and game_type == 'Nomi':
+                return 'Articoli'
+            elif choice == '2' and game_type == 'Verbi':
+                return 'Coniugazioni'
     
     def _load_words(self, game_type):
         """Carica le parole in base al tipo di gioco"""

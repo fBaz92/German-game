@@ -15,7 +15,7 @@ class ReviewMode:
         self.correct_count = 0
         self.total_count = 0
     
-    def get_words_to_review(self, game_type, min_errors=2, limit=20):
+    def get_words_to_review(self, game_type, min_errors=1, limit=20):
         """
         Ottiene le parole da ripassare basate sugli errori
         
@@ -65,12 +65,20 @@ class ReviewMode:
         words = self.get_words_to_review(game_type)
         
         if not words:
-            print("\n✨ Complimenti! Non hai errori frequenti da ripassare!")
-            print("   Prova a giocare una partita normale per accumulare dati.")
+            # Controlla se ci sono errori ma con soglia più alta
+            error_words = self.db.get_most_common_errors_by_type(game_type, min_errors=2)
+            if error_words:
+                print("\n📊 Hai errori nel database, ma nessuna parola è stata sbagliata abbastanza volte.")
+                print("   (Soglia attuale: almeno 2 errori per parola)")
+                print("   Prova a giocare più partite per accumulare errori ripetuti.")
+            else:
+                print("\n✨ Complimenti! Non hai errori da ripassare!")
+                print("   Prova a giocare una partita normale per accumulare dati.")
             return
         
         print(f"\n📚 Trovate {len(words)} parole da ripassare")
-        print("   (Queste sono le parole che hai sbagliato più spesso)\n")
+        print("   (Queste sono le parole che hai sbagliato più spesso)")
+        print("💡 Suggerimento: Digita 'n' per terminare in qualsiasi momento\n")
         
         # Mescola le parole
         random.shuffle(words)
@@ -80,15 +88,20 @@ class ReviewMode:
             print(f"\n📝 Parola {i}/{len(words)}:")
             
             if mode == 'Traduzione':
-                self._ask_translation(word)
+                result = self._ask_translation(word)
             elif mode == 'Articoli' and game_type == 'Nomi':
-                self._ask_article(word)
+                result = self._ask_article(word)
             elif mode == 'Coniugazioni' and game_type == 'Verbi':
-                self._ask_conjugation(word)
+                result = self._ask_conjugation(word)
             
-            # Chiedi se continuare
-            if not self._ask_continue():
+            # Controlla se l'utente vuole terminare
+            if result == 'quit':
+                print("\n👋 Ripasso terminato dall'utente.")
                 break
+            
+            # Mostra suggerimento per continuare (solo se non è l'ultima parola)
+            if i < len(words):
+                print("(digita n per terminare)")
         
         # Mostra risultati
         self._show_results(game_type, mode)
@@ -97,6 +110,10 @@ class ReviewMode:
         """Chiede la traduzione"""
         print(f"Come si dice '{word.italian}' in tedesco?")
         user_answer = input("➤ La tua risposta: ").strip()
+        
+        # Controlla se l'utente vuole terminare
+        if user_answer.lower() == 'n':
+            return 'quit'
         
         correct_word = word.german if hasattr(word, 'german') else word.verb if hasattr(word, 'verb') else word.adjective
         is_correct, penalty, feedback = word.check_answer(user_answer)
@@ -114,11 +131,17 @@ class ReviewMode:
                 'correct_answer': correct_word,
                 'penalty': penalty
             })
+        
+        return is_correct
     
     def _ask_article(self, word):
         """Chiede l'articolo"""
         print(f"Articolo di '{word.german}'? (der/die/das)")
         user_answer = input("➤ La tua risposta (der/die/das): ").strip()
+        
+        # Controlla se l'utente vuole terminare
+        if user_answer.lower() == 'n':
+            return 'quit'
         
         is_correct, penalty, feedback = word.check_article(user_answer)
         print(feedback)
@@ -135,6 +158,8 @@ class ReviewMode:
                 'correct_answer': word.article,
                 'penalty': penalty
             })
+        
+        return is_correct
     
     def _ask_conjugation(self, verb):
         """Chiede una coniugazione verbale"""
@@ -150,11 +175,16 @@ class ReviewMode:
         
         user_answer = input("➤ La tua risposta: ").strip()
         
+        # Controlla se l'utente vuole terminare
+        if user_answer.lower() == 'n':
+            return 'quit'
+        
         self.total_count += 1
         
         if user_answer == correct_answer:
             print("✅ CORRETTO!")
             self.correct_count += 1
+            return True
         else:
             print(f"❌ SBAGLIATO! Risposta corretta: {correct_answer}")
             self.errors.append({
@@ -164,11 +194,8 @@ class ReviewMode:
                 'correct_answer': correct_answer,
                 'penalty': 1.0
             })
+            return False
     
-    def _ask_continue(self):
-        """Chiedi se continuare"""
-        response = input("\nContinuare? (s/n): ").strip().lower()
-        return response == 's'
     
     def _show_results(self, game_type, mode):
         """Mostra i risultati del ripasso"""

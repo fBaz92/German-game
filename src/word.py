@@ -2,6 +2,8 @@
 
 # Classi Word, Noun, Verb, Adjective 
 
+from .normalization import compare_german_words
+
 # ==================== src/word.py ====================
 
 
@@ -29,22 +31,19 @@ class Word:
         if user_answer == correct:
             return True, 0, "✅ CORRETTO!"
         
+        # Usa la normalizzazione per confronti flessibili
+        if compare_german_words(user_answer, correct):
+            # Controlla solo le maiuscole se le parole sono equivalenti
+            if user_answer[0].islower() and correct[0].isupper():
+                return False, 0.5, f"⚠️ QUASI! Attenzione alle maiuscole: {correct}"
+            else:
+                return True, 0, "✅ CORRETTO!"
+        
         # Errore di maiuscola (per sostantivi è grave)
         if user_answer.lower() == correct.lower():
             if user_answer[0].islower() and correct[0].isupper():
                 return False, 1.0, f"❌ SBAGLIATO! In tedesco i sostantivi iniziano con la MAIUSCOLA: {correct}"
             return False, 0.5, f"⚠️ QUASI! Attenzione alle maiuscole: {correct}"
-        
-        # Errore di umlaut
-        umlaut_map = {'ä': 'a', 'ö': 'o', 'ü': 'u', 'Ä': 'A', 'Ö': 'O', 'Ü': 'U', 'ß': 'ss'}
-        
-        def normalize_umlauts(text):
-            for umlaut, replacement in umlaut_map.items():
-                text = text.replace(umlaut, replacement)
-            return text
-        
-        if normalize_umlauts(user_answer) == normalize_umlauts(correct):
-            return False, 0.5, f"⚠️ QUASI! Attenzione alle umlaut: {correct}"
         
         # Errore completo
         return False, 1.0, f"❌ SBAGLIATO! Risposta corretta: {correct}"
