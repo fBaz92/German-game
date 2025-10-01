@@ -6,19 +6,20 @@ Un gioco interattivo da linea di comando per imparare il tedesco attraverso la p
 
 ```
 german-game/
-├── main.py                 # Entry point del gioco
-├── README.md              # Questo file
-├── game_history.db        # Database SQLite (generato automaticamente)
-├── assets/                # Cartella con i dati CSV
-│   ├── nomi.csv          # Sostantivi tedeschi
-│   ├── verbi.csv         # Verbi tedeschi
-│   └── aggettivi.csv     # Aggettivi tedeschi
-└── src/                   # Codice sorgente
+├── main.py                 # Entry point del gioco (CLI)
+├── streamlit_app.py        # Interfaccia grafica Streamlit per giocare
+├── README.md               # Questo file
+├── game_history.db         # Database SQLite (generato automaticamente)
+├── assets/                 # Cartella con i dati CSV
+│   ├── nomi.csv           # Sostantivi tedeschi
+│   ├── verbi.csv          # Verbi tedeschi
+│   └── aggettivi.csv      # Aggettivi tedeschi
+└── src/                    # Codice sorgente
     ├── __init__.py
-    ├── word.py           # Classi Word, Noun, Verb, Adjective
-    ├── data_loader.py    # Caricamento dati dai CSV
-    ├── database.py       # Gestione database errori
-    └── game_manager.py   # Logica principale del gioco
+    ├── word.py            # Classi Word, Noun, Verb, Adjective
+    ├── data_loader.py     # Caricamento dati dai CSV
+    ├── database.py        # Gestione database errori
+    └── game_manager.py    # Logica principale del gioco
 ```
 
 ## 🎮 Come Giocare
@@ -28,14 +29,29 @@ german-game/
 1. Assicurati di avere Python 3.7+ installato
 2. Clona o scarica il progetto
 3. Crea i file CSV nella cartella `assets/` (vedi formato sotto)
+4. (Opzionale, per interfaccia grafica) Installa Streamlit:
 
-### Avvio del Gioco
+```bash
+pip install streamlit
+```
+
+### Avvio del Gioco (CLI)
 
 ```bash
 python main.py
 ```
 
-### Modalità di Gioco
+### Avvio dell'Interfaccia Grafica (Streamlit)
+
+```bash
+streamlit run streamlit_app.py
+```
+
+- Dalla UI potrai scegliere la categoria (Nomi/Verbi/Aggettivi) e la modalità (Traduzione e, per i sostantivi, Articoli).
+- I dati vengono letti dagli stessi CSV in `assets/`.
+- Il salvataggio nel database `game_history.db` avviene come nella versione CLI.
+
+## Modalità di Gioco
 
 Il gioco offre tre categorie:
 
@@ -116,6 +132,7 @@ Il database è un file SQLite (`game_history.db`) che viene creato automaticamen
 ## 🎯 Funzionalità
 
 - ✅ Gioco interattivo da linea di comando
+- ✅ Interfaccia grafica Streamlit per giocare da browser
 - ✅ Tre categorie di parole (nomi, verbi, aggettivi)
 - ✅ Modalità speciale "der/die/das" per i sostantivi
 - ✅ Sistema di valutazione con penalità per maiuscole e umlaut
@@ -123,7 +140,7 @@ Il database è un file SQLite (`game_history.db`) che viene creato automaticamen
 - ✅ Statistiche dettagliate a fine partita
 - ✅ Possibilità di interrompere la partita in qualsiasi momento
 
-## 🚀 Esempio di Utilizzo
+## 🚀 Esempio di Utilizzo (CLI)
 
 ```
 =================================================
