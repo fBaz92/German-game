@@ -4,6 +4,7 @@ from datetime import datetime
 from src.data_loader import DataLoader
 from src.database import DatabaseManager
 import random
+import streamlit.components.v1 as components
 
 # Configurazione della pagina
 st.set_page_config(
@@ -21,6 +22,8 @@ if 'game_started' not in st.session_state:
     st.session_state.questions = []
     st.session_state.game_type = None
     st.session_state.mode = None
+    st.session_state.feedback_by_q = {}
+    st.session_state.graded_q = set()
 
 
 def reset_game():
@@ -32,6 +35,8 @@ def reset_game():
     st.session_state.questions = []
     st.session_state.game_type = None
     st.session_state.mode = None
+    st.session_state.feedback_by_q = {}
+    st.session_state.graded_q = set()
 
 
 def start_game(game_type, mode, num_questions=10):
@@ -54,33 +59,29 @@ def start_game(game_type, mode, num_questions=10):
     st.session_state.current_question = 0
     st.session_state.score = 0
     st.session_state.errors = []
+    st.session_state.feedback_by_q = {}
+    st.session_state.graded_q = set()
 
 
-def check_answer(user_answer, correct_answer, word_obj):
-    """Verifica la risposta e calcola il punteggio"""
-    penalty = 0
-    
+def check_answer(user_answer, correct_answer, is_articles):
+    """Verifica la risposta e calcola la penalità"""
     if user_answer.strip() == correct_answer.strip():
-        return True, 0
+        return True, 0.0
     
-    # Controlla errori di maiuscola nei sostantivi
-    if st.session_state.game_type == "Nomi" and st.session_state.mode.startswith("Articoli") is False:
+    # Controlla errori di maiuscola nei sostantivi (solo traduzione)
+    if st.session_state.game_type == "Nomi" and not is_articles:
         if user_answer.strip().lower() == correct_answer.strip().lower():
-            penalty = 1.0  # Errore completo per maiuscola
-            return False, penalty
+            return False, 1.0  # Errore completo per maiuscola
     
     # Controlla errori umlaut
     umlaut_map = {'ä': 'a', 'ö': 'o', 'ü': 'u', 'Ä': 'A', 'Ö': 'O', 'Ü': 'U', 'ß': 'ss'}
     user_normalized = user_answer
     correct_normalized = correct_answer
-    
     for umlaut, replacement in umlaut_map.items():
         user_normalized = user_normalized.replace(umlaut, replacement)
         correct_normalized = correct_normalized.replace(umlaut, replacement)
-    
     if user_normalized.strip() == correct_normalized.strip():
-        penalty = 0.5  # Mezzo errore per umlaut
-        return False, penalty
+        return False, 0.5  # Mezzo errore per umlaut
     
     return False, 1.0  # Errore completo
 
@@ -121,7 +122,26 @@ def show_stats():
 
 # Header principale
 st.title("🇩🇪 Impara il Tedesco")
+st.caption("Suggerimenti: Premi Invio per verificare. Usa Ctrl+V per 'Vedi risposta'.")
 st.markdown("---")
+
+# Inject keyboard shortcut for Ctrl+V to click 'Vedi risposta'
+components.html(
+    """
+    <script>
+    document.addEventListener('keydown', function(e) {
+      const isMac = navigator.platform.toUpperCase().indexOf('MAC')>=0;
+      const ctrl = isMac ? e.metaKey : e.ctrlKey;
+      if (ctrl && (e.key === 'v' || e.key === 'V')) {
+        const buttons = Array.from(parent.document.querySelectorAll('button'));
+        const target = buttons.find(b => b.innerText && b.innerText.includes('Vedi risposta'));
+        if (target) { e.preventDefault(); target.click(); }
+      }
+    });
+    </script>
+    """,
+    height=0,
+)
 
 # Sidebar per navigazione
 with st.sidebar:
@@ -191,61 +211,123 @@ if page == "🎮 Gioca":
                 correct_answer = word.article
                 st.info(f"**Qual è l'articolo di:** {question_text}")
             
-            # Input risposta
-            if is_articles:
-                user_answer = st.radio(
-                    "Seleziona l'articolo:",
-                    ["der", "die", "das"],
-                    key=f"answer_{current_idx}"
-                )
-            else:
-                user_answer = st.text_input(
-                    "La tua risposta:",
-                    key=f"answer_{current_idx}",
-                    placeholder="Scrivi qui..."
-                )
-            
-            col1, col2 = st.columns(2)
-            
-            with col1:
-                if st.button("✅ Verifica", type="primary", use_container_width=True):
-                    if user_answer:
-                        is_correct, penalty = check_answer(user_answer, correct_answer, word)
-                        
-                        if is_correct:
-                            st.success("✅ Corretto!")
-                            st.session_state.score += 1
-                        else:
-                            st.error(f"❌ Sbagliato! Risposta corretta: **{correct_answer}**")
-                            error_type = "maiuscola" if penalty == 1.0 and not is_articles else "umlaut" if penalty == 0.5 else "completo"
-                            st.session_state.errors.append({
-                                'word_german': word.german if not is_articles else word.german,
-                                'word_italian': word.italian if not is_articles else word.italian,
-                                'user_answer': user_answer,
-                                'correct_answer': correct_answer,
-                                'penalty': penalty,
-                                'error_type': error_type
-                            })
-                            st.session_state.score -= penalty
-                        
+            # Se esiste feedback già mostrato per questa domanda, visualizzalo e mostra solo Avanti/Ricomincia
+            feedback = st.session_state.feedback_by_q.get(current_idx)
+            if feedback is not None:
+                if feedback['ok']:
+                    st.success(feedback['message'])
+                else:
+                    st.error(feedback['message'])
+                st.divider()
+                cols = st.columns([1, 1])
+                with cols[0]:
+                    if st.button("⏭️ Prossima", key=f"next_after_feedback_{current_idx}", use_container_width=True):
                         st.session_state.current_question += 1
                         st.rerun()
-                    else:
-                        st.warning("⚠️ Inserisci una risposta!")
-            
-            with col2:
-                if st.button("⏩ Salta", use_container_width=True):
-                    st.session_state.errors.append({
-                        'word_german': word.german,
-                        'word_italian': word.italian,
-                        'user_answer': '(saltata)',
-                        'correct_answer': correct_answer,
-                        'penalty': 1.0,
-                        'error_type': 'saltata'
-                    })
-                    st.session_state.score -= 1
-                    st.session_state.current_question += 1
-                    st.rerun()
+                with cols[1]:
+                    if st.button("🔁 Ricomincia", key=f"restart_after_feedback_{current_idx}", use_container_width=True):
+                        reset_game()
+                        st.rerun()
+            else:
+                # Input e azioni
+                if not is_articles:
+                    with st.form(key=f"form_{current_idx}"):
+                        user_answer = st.text_input(
+                            "La tua risposta:",
+                            key=f"answer_{current_idx}",
+                            placeholder="Scrivi qui..."
+                        )
+                        submitted = st.form_submit_button("✅ Verifica (Invio)")
+                        if submitted:
+                            ok, penalty = check_answer(user_answer, correct_answer, is_articles)
+                            if ok:
+                                st.session_state.score += 1
+                                st.session_state.feedback_by_q[current_idx] = {
+                                    'ok': True,
+                                    'message': "✅ Corretto!"
+                                }
+                            else:
+                                error_type = "maiuscola" if penalty == 1.0 else "umlaut" if penalty == 0.5 else "completo"
+                                st.session_state.errors.append({
+                                    'word_german': word.german,
+                                    'word_italian': word.italian,
+                                    'user_answer': user_answer,
+                                    'correct_answer': correct_answer,
+                                    'penalty': penalty,
+                                    'error_type': error_type
+                                })
+                                st.session_state.score -= penalty
+                                st.session_state.feedback_by_q[current_idx] = {
+                                    'ok': False,
+                                    'message': f"❌ Sbagliato! Risposta corretta: {correct_answer}"
+                                }
+                            st.rerun()
+                else:
+                    user_answer = st.radio(
+                        "Seleziona l'articolo:",
+                        ["der", "die", "das"],
+                        key=f"answer_{current_idx}"
+                    )
+                    col_a, col_b = st.columns(2)
+                    with col_a:
+                        if st.button("✅ Verifica", key=f"check_{current_idx}", use_container_width=True):
+                            ok, penalty = check_answer(user_answer, correct_answer, is_articles)
+                            if ok:
+                                st.session_state.score += 1
+                                st.session_state.feedback_by_q[current_idx] = {
+                                    'ok': True,
+                                    'message': "✅ Corretto!"
+                                }
+                            else:
+                                error_type = "completo" if penalty == 1.0 else "umlaut"
+                                st.session_state.errors.append({
+                                    'word_german': word.german,
+                                    'word_italian': word.italian,
+                                    'user_answer': user_answer,
+                                    'correct_answer': correct_answer,
+                                    'penalty': penalty,
+                                    'error_type': error_type
+                                })
+                                st.session_state.score -= penalty
+                                st.session_state.feedback_by_q[current_idx] = {
+                                    'ok': False,
+                                    'message': f"❌ Sbagliato! Risposta corretta: {correct_answer}"
+                                }
+                            st.rerun()
+                    with col_b:
+                        if st.button("👁️ Vedi risposta (Ctrl+V)", key=f"reveal_{current_idx}", use_container_width=True):
+                            # Conta come errore completo e mostra la risposta
+                            st.session_state.errors.append({
+                                'word_german': word.german,
+                                'word_italian': word.italian,
+                                'user_answer': '(vedi risposta)',
+                                'correct_answer': correct_answer,
+                                'penalty': 1.0,
+                                'error_type': 'rivelata'
+                            })
+                            st.session_state.score -= 1.0
+                            st.session_state.feedback_by_q[current_idx] = {
+                                'ok': False,
+                                'message': f"👁️ Risposta: {correct_answer} (contata come errore)"
+                            }
+                            st.rerun()
+                # Per la modalità Traduzione aggiungiamo anche il pulsante "Vedi risposta"
+                if not is_articles:
+                    if st.button("👁️ Vedi risposta (Ctrl+V)", key=f"reveal_txt_{current_idx}", use_container_width=True):
+                        st.session_state.errors.append({
+                            'word_german': word.german,
+                            'word_italian': word.italian,
+                            'user_answer': '(vedi risposta)',
+                            'correct_answer': correct_answer,
+                            'penalty': 1.0,
+                            'error_type': 'rivelata'
+                        })
+                        st.session_state.score -= 1.0
+                        st.session_state.feedback_by_q[current_idx] = {
+                            'ok': False,
+                            'message': f"👁️ Risposta: {correct_answer} (contata come errore)"
+                        }
+                        st.rerun()
         
         else:
             # Fine partita
@@ -304,7 +386,8 @@ else:
         2. **Seleziona la modalità**:
            - **Traduzione**: Traduci dall'italiano al tedesco
            - **Articoli** (solo per nomi): Indovina l'articolo corretto (der/die/das)
-        3. **Rispondi alle domande** e verifica le tue risposte
+        3. **Rispondi alle domande** e verifica le tue risposte (premi Invio per verificare)
+        4. **👁️ Vedi risposta**: mostra la risposta corretta (Ctrl+V), conta come errore e puoi proseguire con "Prossima"
         
         ### Sistema di Punteggio
         
@@ -319,12 +402,6 @@ else:
         - Storico delle partite
         - Percentuale di successo
         - Parole più sbagliate
-        
-        ### Consigli
-        
-        - 💡 Fai attenzione alle maiuscole nei sostantivi tedeschi
-        - 💡 Ricorda le umlaut (ä, ö, ü, ß)
-        - 💡 Ripassa le parole più sbagliate nella sezione Statistiche
         
         ---
         
