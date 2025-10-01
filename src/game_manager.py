@@ -1,7 +1,7 @@
 # ==================== src/game_manager.py ====================
 import random
-from data_loader import DataLoader
-from database import DatabaseManager
+from .data_loader import DataLoader
+from .database import DatabaseManager
 
 
 class GameManager:
@@ -28,7 +28,7 @@ class GameManager:
         if not words:
             return
         
-        print(f"\\n✅ Caricati {len(words)} {game_type.lower()}")
+        print(f"\n✅ Caricati {len(words)} {game_type.lower()}")
         
         # Scelta modalità
         mode = self._choose_mode(game_type)
@@ -43,18 +43,18 @@ class GameManager:
     
     def _print_welcome(self):
         """Stampa il messaggio di benvenuto"""
-        print("\\n" + "="*50)
+        print("\n" + "="*50)
         print("🇩🇪  BENVENUTO AL GIOCO DI TEDESCO  🇩🇪")
         print("="*50)
     
     def _choose_game_type(self):
         """Chiede all'utente cosa vuole studiare"""
-        print("\\nCosa vuoi studiare?")
+        print("\nCosa vuoi studiare?")
         print("1. Nomi (Sostantivi)")
         print("2. Verbi")
         print("3. Aggettivi")
         
-        choice = input("\\nScelta (1/2/3): ").strip()
+        choice = input("\nScelta (1/2/3): ").strip()
         
         game_types = {
             '1': 'Nomi',
@@ -66,13 +66,13 @@ class GameManager:
     
     def _choose_mode(self, game_type):
         """Chiede la modalità di gioco"""
-        print("\\nScegli modalità:")
+        print("\nScegli modalità:")
         print("1. Traduzione (Italiano → Tedesco)")
         
         if game_type == 'Nomi':
             print("2. Articoli (der/die/das)")
         
-        choice = input("\\nModalità (1/2): ").strip()
+        choice = input("\nModalità (1/2): ").strip()
         
         if choice == '1':
             return 'Traduzione'
@@ -96,13 +96,13 @@ class GameManager:
         # Mescola le parole
         random.shuffle(words)
         
-        print("\\n" + "="*50)
+        print("\n" + "="*50)
         print(f"🎮 MODALITÀ: {mode.upper()}")
         print("="*50)
         print("💡 Suggerimento: Puoi interrompere in qualsiasi momento rispondendo 'n'")
         
         for i, word in enumerate(words, 1):
-            print(f"\\n📝 Domanda {i}:")
+            print(f"\n📝 Domanda {i}:")
             
             if mode == 'Traduzione':
                 is_correct = self._ask_translation(word)
@@ -113,7 +113,7 @@ class GameManager:
             if not self._ask_continue():
                 break
         
-        print("\\n" + "="*50)
+        print("\n" + "="*50)
     
     def _ask_translation(self, word):
         """Chiede la traduzione di una parola"""
@@ -163,17 +163,17 @@ class GameManager:
     
     def _ask_continue(self):
         """Chiede se continuare"""
-        response = input("\\nContinuare? (s/n): ").strip().lower()
+        response = input("\nContinuare? (s/n): ").strip().lower()
         return response == 's'
     
     def _show_results(self, game_type, mode):
         """Mostra i risultati finali"""
-        print("\\n" + "="*50)
+        print("\n" + "="*50)
         print("📊 RISULTATI FINALI")
         print("="*50)
         
         if self.total_count == 0:
-            print("\\n❌ Nessuna domanda risposta.")
+            print("\n❌ Nessuna domanda risposta.")
             return
         
         # Calcola punteggio effettivo (considerando penalità)
@@ -181,13 +181,13 @@ class GameManager:
         effective_score = self.total_count - total_errors
         success_rate = (effective_score / self.total_count * 100)
         
-        print(f"\\n✅ Risposte corrette: {self.correct_count}/{self.total_count}")
+        print(f"\n✅ Risposte corrette: {self.correct_count}/{self.total_count}")
         print(f"❌ Errori totali: {len(self.errors)}")
         print(f"📈 Percentuale di successo: {success_rate:.1f}%")
         
         # Mostra errori
         if self.errors:
-            print("\\n" + "─"*50)
+            print("\n" + "─"*50)
             print("Errori commessi:")
             print("─"*50)
             
@@ -205,5 +205,5 @@ class GameManager:
             errors=self.errors
         )
         
-        print("\\n💾 Partita salvata nel database!")
+        print("\n💾 Partita salvata nel database!")
         print("="*50)
