@@ -30,6 +30,12 @@ if 'game_started' not in st.session_state:
     st.session_state.main_mode = None  # 'normal', 'study', 'review'
     st.session_state.study_words = []  # Words selected for study mode
     st.session_state.show_study_list = False
+    st.session_state.deep_study_started = False
+    st.session_state.deep_study = None
+
+# Inizializza last_feedback se non esiste
+if 'last_feedback' not in st.session_state:
+    st.session_state.last_feedback = None
 
 
 def reset_game():
@@ -102,6 +108,360 @@ def get_review_words(game_type):
     words = review_mode.get_words_to_review(game_type, min_errors=1, limit=20)
     return words
 
+def get_words_by_difficulty(words, difficulty_mode, difficulty_level):
+    """Filtra le parole in base alla difficoltà"""
+    from src.data_loader import DataLoader
+    loader = DataLoader()
+    return loader.get_words_by_difficulty(words, difficulty_mode, difficulty_level)
+
+
+def play_deep_study_game(deep_study):
+    """Gestisce il gioco dello studio approfondito"""
+    st.header(f"🎯 Studio Approfondito - Round {deep_study['round_number']}")
+    
+    # Mostra progresso
+    total_words = len(deep_study['words'])
+    # Calcola le parole padroneggiate dal round_results
+    mastered_in_round = sum(1 for mastered in deep_study['round_results'].values() if mastered)
+    remaining_in_round = len(deep_study['current_round_words'])
+    total_in_round = deep_study.get('total_round_words', len(deep_study['words_to_master']))
+    
+    # Progresso del round corrente
+    round_progress = mastered_in_round / total_in_round if total_in_round > 0 else 0
+    
+    st.progress(round_progress)
+    st.info(f"📊 Round {deep_study['round_number']}: {mastered_in_round}/{total_in_round} parole padroneggiate | {remaining_in_round} rimanenti")
+    
+    # Se il round è in corso, mostra la parola corrente
+    if deep_study['round_in_progress'] and deep_study['current_round_words']:
+        word_idx, word = deep_study['current_round_words'][0]
+        
+        # Determina la domanda in base alla modalità
+        is_reverse_translation = deep_study['mode'] == 'Traduzione Inversa'
+        
+        if is_reverse_translation:
+            question_text = f"Come si dice **{word.german}** in italiano?"
+            correct_answer = word.italian
+        else:
+            if deep_study['mode'] == 'Traduzione':
+                question_text = f"Come si dice **{word.italian}** in tedesco?"
+                correct_answer = word.german
+            elif deep_study['mode'] == 'Articoli':
+                question_text = f"Qual è l'articolo di **{word.german}**?"
+                correct_answer = word.article
+            elif deep_study['mode'] == 'Coniugazioni':
+                question_text = f"Coniuga **{word.italian}** al Präteritum:"
+                correct_answer = word.prateritum
+        
+        st.markdown(f"### 📝 {question_text}")
+        
+        # Mostra feedback dell'ultima risposta se disponibile
+        if st.session_state.last_feedback:
+            if st.session_state.last_feedback['type'] == 'success':
+                st.success(st.session_state.last_feedback['message'])
+            elif st.session_state.last_feedback['type'] == 'warning':
+                st.warning(st.session_state.last_feedback['message'])
+            elif st.session_state.last_feedback['type'] == 'error':
+                st.error(st.session_state.last_feedback['message'])
+            elif st.session_state.last_feedback['type'] == 'info':
+                st.info(st.session_state.last_feedback['message'])
+        
+        # Input dell'utente
+        if deep_study['mode'] in ['Traduzione', 'Traduzione Inversa']:
+            user_answer = st.text_input("La tua risposta:", key=f"deep_study_{word_idx}_{deep_study['round_number']}")
+        elif deep_study['mode'] == 'Articoli':
+            user_answer = st.radio("Articolo:", ["der", "die", "das"], key=f"deep_study_{word_idx}_{deep_study['round_number']}")
+        elif deep_study['mode'] == 'Coniugazioni':
+            user_answer = st.text_input("Präteritum:", key=f"deep_study_{word_idx}_{deep_study['round_number']}")
+        
+        # Controlla se l'utente ha premuto Invio (per text_input)
+        enter_pressed = False
+        if deep_study['mode'] in ['Traduzione', 'Traduzione Inversa', 'Coniugazioni']:
+            # Usa session state per tracciare se è stata inserita una risposta
+            input_key = f"deep_study_{word_idx}_{deep_study['round_number']}"
+            if st.session_state.get(input_key, "") != "" and not st.session_state.get(f"processed_{input_key}", False):
+                enter_pressed = True
+                st.session_state[f"processed_{input_key}"] = True
+        
+        # Pulsanti di controllo
+        col1, col2, col3 = st.columns(3)
+        
+        with col1:
+            check_clicked = st.button("✅ Controlla Risposta", type="primary")
+            
+            if check_clicked or enter_pressed:
+                if user_answer.strip():
+                    # Controlla la risposta
+                    is_correct, penalty = check_answer(user_answer, correct_answer, 
+                                                      is_conjugation=(deep_study['mode'] == 'Coniugazioni'),
+                                                      is_reverse_translation=is_reverse_translation)
+                    
+                    # Incrementa i tentativi per questa parola nel round corrente
+                    if word_idx not in deep_study['round_attempts']:
+                        deep_study['round_attempts'][word_idx] = 0
+                    deep_study['round_attempts'][word_idx] += 1
+                    deep_study['total_attempts'][word_idx] += 1
+                    
+                    # Aggiorna il punteggio e salva il risultato del round
+                    if is_correct:
+                        st.session_state.score += 1
+                        
+                        # Calcola il numero di tentativi per questa parola nel round corrente
+                        attempts_for_word = deep_study['round_attempts'][word_idx]
+                        
+                        if penalty == 0.0:
+                            if attempts_for_word == 1:
+                                feedback_message = "🎉 PADRONEGGIATA! Al primo tentativo!"
+                                # Traccia se è stata padroneggiata al primo tentativo
+                                deep_study['first_try_mastered'].add(word_idx)
+                            else:
+                                feedback_message = f"🎉 PADRONEGGIATA! Al {attempts_for_word}° tentativo!"
+                            feedback_type = 'success'
+                        elif penalty == 0.5:
+                            feedback_message = "⚠️ QUASI! Attenzione alle maiuscole o umlaut!"
+                            feedback_type = 'warning'
+                        deep_study['round_results'][word_idx] = True
+                    else:
+                        feedback_message = f"❌ Sbagliata! Da ripassare nel prossimo round.\n💡 Risposta corretta: **{correct_answer}**"
+                        feedback_type = 'error'
+                        deep_study['round_results'][word_idx] = False
+                        # Incrementa la difficoltà solo se non padroneggiata
+                        if word_idx not in deep_study['word_difficulty']:
+                            deep_study['word_difficulty'][word_idx] = 0
+                        deep_study['word_difficulty'][word_idx] += 1
+                    
+                    # Salva il feedback per la prossima visualizzazione
+                    st.session_state.last_feedback = {
+                        'type': feedback_type,
+                        'message': feedback_message
+                    }
+                    
+                    # Passa sempre alla parola successiva
+                    deep_study['current_round_words'].pop(0)
+                    
+                    # Reset del flag processed per la prossima parola
+                    if deep_study['mode'] in ['Traduzione', 'Traduzione Inversa', 'Coniugazioni']:
+                        input_key = f"deep_study_{word_idx}_{deep_study['round_number']}"
+                        if f"processed_{input_key}" in st.session_state:
+                            del st.session_state[f"processed_{input_key}"]
+                    
+                    deep_study['total_questions'] += 1
+                    st.session_state.deep_study = deep_study
+                    st.rerun()
+                else:
+                    st.warning("⚠️ Inserisci una risposta!")
+        
+        with col2:
+            if st.button("🔍 Vedi Risposta"):
+                # Incrementa i tentativi per questa parola nel round corrente
+                if word_idx not in deep_study['round_attempts']:
+                    deep_study['round_attempts'][word_idx] = 0
+                deep_study['round_attempts'][word_idx] += 1
+                deep_study['total_attempts'][word_idx] += 1
+                
+                # Salva il feedback per la prossima visualizzazione
+                st.session_state.last_feedback = {
+                    'type': 'info',
+                    'message': f"💡 Risposta corretta: **{correct_answer}**"
+                }
+                
+                deep_study['round_results'][word_idx] = False
+                # Incrementa la difficoltà solo se non padroneggiata
+                if word_idx not in deep_study['word_difficulty']:
+                    deep_study['word_difficulty'][word_idx] = 0
+                deep_study['word_difficulty'][word_idx] += 1
+                deep_study['total_questions'] += 1
+                # Passa alla parola successiva
+                deep_study['current_round_words'].pop(0)
+                
+                # Reset del flag processed per la prossima parola
+                if deep_study['mode'] in ['Traduzione', 'Traduzione Inversa', 'Coniugazioni']:
+                    input_key = f"deep_study_{word_idx}_{deep_study['round_number']}"
+                    if f"processed_{input_key}" in st.session_state:
+                        del st.session_state[f"processed_{input_key}"]
+                
+                st.session_state.deep_study = deep_study
+                st.rerun()
+        
+        with col3:
+            if st.button("⏹️ Termina Studio"):
+                # Salva la cronologia del round corrente prima di terminare
+                if deep_study['round_results']:
+                    deep_study['round_history'][deep_study['round_number']] = {
+                        'mastered_words': [word_idx for word_idx, mastered in deep_study['round_results'].items() if mastered],
+                        'total_words': len(deep_study['words_to_master']),
+                        'first_try_count': len([word_idx for word_idx in deep_study['round_results'].keys() 
+                                              if deep_study['round_results'][word_idx] and word_idx in deep_study['first_try_mastered']])
+                    }
+                
+                st.session_state.deep_study_started = False
+                st.session_state.deep_study = None
+                st.rerun()
+    
+    # Controlla se il round è completato
+    elif not deep_study['round_in_progress'] or not deep_study['current_round_words']:
+        # Round completato - mostra risultati e chiedi se continuare
+        show_round_results(deep_study)
+
+def show_round_results(deep_study):
+    """Mostra i risultati del round e chiede se continuare"""
+    st.header(f"📊 Risultati Round {deep_study['round_number']}")
+    
+    # Calcola statistiche del round
+    total_round_words = len(deep_study['words_to_master'])
+    mastered_this_round = sum(1 for mastered in deep_study['round_results'].values() if mastered)
+    not_mastered_this_round = total_round_words - mastered_this_round
+    
+    col1, col2, col3 = st.columns(3)
+    
+    with col1:
+        st.metric("Parole del Round", total_round_words)
+    
+    with col2:
+        st.metric("✅ Padroneggiate", mastered_this_round)
+    
+    with col3:
+        st.metric("❌ Da Ripassare", not_mastered_this_round)
+    
+    # Mostra dettagli delle parole
+    st.subheader("📋 Dettaglio Parole")
+    
+    for word_idx, word in deep_study['words_to_master']:
+        mastered = deep_study['round_results'].get(word_idx, False)
+        attempts = deep_study['total_attempts'].get(word_idx, 0)
+        
+        if mastered:
+            st.success(f"✅ **{word.italian}** → **{word.german}** (PADRONEGGIATA)")
+        else:
+            st.error(f"❌ **{word.italian}** → **{word.german}** ({attempts} tentativi)")
+    
+    # Aggiorna le parole da padroneggiare per il prossimo round
+    new_words_to_master = [(word_idx, word) for word_idx, word in deep_study['words_to_master'] 
+                          if not deep_study['round_results'].get(word_idx, False)]
+    
+    if new_words_to_master:
+        st.info(f"🔄 **Round {deep_study['round_number'] + 1}**: Continuerai con {len(new_words_to_master)} parole")
+        
+        # Salva la cronologia del round corrente
+        deep_study['round_history'][deep_study['round_number']] = {
+            'mastered_words': [word_idx for word_idx, mastered in deep_study['round_results'].items() if mastered],
+            'total_words': len(deep_study['words_to_master']),
+            'first_try_count': len([word_idx for word_idx in deep_study['round_results'].keys() 
+                                  if deep_study['round_results'][word_idx] and word_idx in deep_study['first_try_mastered']])
+        }
+        
+        # Prepara automaticamente il prossimo round
+        import random
+        random.shuffle(new_words_to_master)
+        
+        deep_study['words_to_master'] = new_words_to_master
+        deep_study['current_round_words'] = new_words_to_master.copy()
+        deep_study['round_number'] += 1
+        deep_study['round_results'] = {}
+        deep_study['current_word_attempts'] = 0
+        deep_study['round_in_progress'] = True
+        deep_study['total_round_words'] = len(new_words_to_master)
+        
+        # Reset del feedback per il nuovo round
+        st.session_state.last_feedback = None
+        
+        st.session_state.deep_study = deep_study
+        st.rerun()
+    else:
+        st.success("🎉 **Complimenti!** Hai padroneggiato tutte le parole!")
+        
+        if st.button("🏆 Vedi Risultati Finali", type="primary"):
+            # Salva la cronologia del round finale prima di mostrare i risultati
+            deep_study['round_history'][deep_study['round_number']] = {
+                'mastered_words': [word_idx for word_idx, mastered in deep_study['round_results'].items() if mastered],
+                'total_words': len(deep_study['words_to_master']),
+                'first_try_count': len([word_idx for word_idx in deep_study['round_results'].keys() 
+                                      if deep_study['round_results'][word_idx] and word_idx in deep_study['first_try_mastered']])
+            }
+            show_deep_study_results(deep_study)
+
+def show_deep_study_results(deep_study):
+    """Mostra i risultati dello studio approfondito"""
+    st.header("🎯 Risultati Studio Approfondito")
+    
+    # Statistiche generali
+    total_words = len(deep_study['words'])
+    total_questions = deep_study['total_questions']
+    
+    col1, col2, col3 = st.columns(3)
+    
+    with col1:
+        st.metric("Parole Totali", total_words)
+    
+    with col2:
+        st.metric("Domande Totali", total_questions)
+    
+    with col3:
+        # Conta le parole padroneggiate al primo tentativo in tutti i round
+        mastered_first_try = len(deep_study['first_try_mastered'])
+        
+        st.metric("Padroneggiate al 1° tentativo", f"{mastered_first_try}/{total_words}")
+    
+    # Calcola tentativi medi
+    average_attempts = sum(deep_study['total_attempts'].values()) / total_words if total_words > 0 else 0
+    
+    st.info(f"📊 **Tentativi medi per parola:** {average_attempts:.1f}")
+    
+    # Mostra cronologia dei round se disponibile
+    if deep_study.get('round_history'):
+        st.subheader("📈 Cronologia Round")
+        
+        round_data = []
+        for round_num, round_info in deep_study['round_history'].items():
+            round_data.append({
+                'Round': round_num,
+                'Parole Totali': round_info['total_words'],
+                'Padroneggiate': len(round_info['mastered_words']),
+                'Al 1° Tentativo': round_info['first_try_count'],
+                'Successo %': f"{(len(round_info['mastered_words']) / round_info['total_words'] * 100):.1f}%" if round_info['total_words'] > 0 else "0%"
+            })
+        
+        if round_data:
+            import pandas as pd
+            df_rounds = pd.DataFrame(round_data)
+            st.dataframe(df_rounds, use_container_width=True)
+    
+    # Classifica delle parole più difficili
+    st.subheader("🏆 Classifica Parole Più Difficili")
+    
+    # Ordina le parole per difficoltà
+    sorted_words = sorted(enumerate(deep_study['words']), 
+                         key=lambda x: deep_study['total_attempts'][x[0]], reverse=True)
+    
+    for i, (word_idx, word) in enumerate(sorted_words[:10], 1):
+        attempts_needed = deep_study['total_attempts'][word_idx]
+        difficulty_emoji = "🔥" if attempts_needed >= 3 else "⚡" if attempts_needed == 2 else "✅"
+        
+        if deep_study['mode'] in ['Traduzione', 'Traduzione Inversa']:
+            st.write(f"{i:2d}. {difficulty_emoji} **{word.italian}** → **{word.german}** ({attempts_needed} tentativi)")
+        elif deep_study['mode'] == 'Articoli':
+            st.write(f"{i:2d}. {difficulty_emoji} **{word.german}** (articolo: {word.article}) ({attempts_needed} tentativi)")
+        elif deep_study['mode'] == 'Coniugazioni':
+            st.write(f"{i:2d}. {difficulty_emoji} **{word.italian}** ({attempts_needed} tentativi)")
+    
+    # Salva nel database
+    if st.button("💾 Salva Risultati", type="primary"):
+        # Salva nel database
+        db = DatabaseManager()
+        db.save_game(
+            game_type=f"{deep_study['game_type']} (Studio Approfondito)",
+            mode=deep_study['mode'],
+            total_questions=total_questions,
+            correct_answers=total_words,  # Tutte le parole sono state padroneggiate
+            errors=[]  # Non usiamo il sistema di errori tradizionale
+        )
+        st.success("✅ Studio approfondito salvato nel database!")
+    
+    # Pulsante per nuovo studio
+    if st.button("🔄 Nuovo Studio Approfondito"):
+        st.session_state.deep_study_started = False
+        st.session_state.deep_study = None
+        st.rerun()
 
 def show_enhanced_stats():
     """Mostra statistiche avanzate"""
@@ -300,39 +660,36 @@ def show_enhanced_stats():
 
 
 def check_answer(user_answer, correct_answer, is_articles=False, is_conjugation=False, is_reverse_translation=False):
-    """Verifica la risposta e calcola la penalità"""
-    if user_answer.strip() == correct_answer.strip():
-        return True, 0.0
+    """Verifica la risposta e calcola la penalità usando il sistema di normalizzazione"""
+    from src.word import Word
+    from src.normalization import compare_german_words
     
-    # Per coniugazioni verbali, confronto più flessibile
+    # Per articoli, confronto semplice
+    if is_articles:
+        if user_answer.strip().lower() == correct_answer.strip().lower():
+            return True, 0.0
+        return False, 1.0
+    
+    # Per coniugazioni verbali, usa il sistema di normalizzazione
     if is_conjugation:
-        if user_answer.strip().lower() == correct_answer.strip().lower():
-            return False, 0.5  # Mezzo errore per maiuscola nelle coniugazioni
-        return False, 1.0  # Errore completo per coniugazioni
+        # Crea una parola temporanea per il controllo
+        temp_word = Word(correct_answer, "temp")
+        is_correct, penalty, feedback = temp_word.check_answer(user_answer)
+        return is_correct, penalty
     
-    # Per traduzione inversa (tedesco → italiano), confronto più flessibile
+    # Per traduzione inversa (tedesco → italiano), confronto semplice
     if is_reverse_translation:
-        if user_answer.strip().lower() == correct_answer.strip().lower():
-            return False, 0.5  # Mezzo errore per maiuscola nella traduzione inversa
-        return False, 1.0  # Errore completo per traduzione inversa
+        if user_answer.strip() == correct_answer.strip():
+            return True, 0.0
+        elif user_answer.strip().lower() == correct_answer.strip().lower():
+            return False, 0.5  # Mezzo errore per maiuscola
+        return False, 1.0
     
-    # Controlla errori di maiuscola nei sostantivi (solo traduzione normale italiano → tedesco)
-    if st.session_state.game_type == "Nomi" and not is_articles and not is_reverse_translation:
-        if user_answer.strip().lower() == correct_answer.strip().lower():
-            return False, 1.0  # Errore completo per maiuscola
-    
-    # Controlla errori umlaut (solo per traduzione tedesco)
-    if not is_reverse_translation:
-        umlaut_map = {'ä': 'a', 'ö': 'o', 'ü': 'u', 'Ä': 'A', 'Ö': 'O', 'Ü': 'U', 'ß': 'ss'}
-        user_normalized = user_answer
-        correct_normalized = correct_answer
-        for umlaut, replacement in umlaut_map.items():
-            user_normalized = user_normalized.replace(umlaut, replacement)
-            correct_normalized = correct_normalized.replace(umlaut, replacement)
-        if user_normalized.strip() == correct_normalized.strip():
-            return False, 0.5  # Mezzo errore per umlaut
-    
-    return False, 1.0  # Errore completo
+    # Per traduzione normale (italiano → tedesco), usa il sistema di normalizzazione
+    # Crea una parola temporanea per il controllo
+    temp_word = Word(correct_answer, "temp")
+    is_correct, penalty, feedback = temp_word.check_answer(user_answer)
+    return is_correct, penalty
 
 
 def show_stats():
@@ -395,7 +752,7 @@ components.html(
 # Sidebar per navigazione
 with st.sidebar:
     st.header("Menu")
-    page = st.radio("Vai a:", ["🎮 Gioca", "📚 Studio", "🔄 Ripasso", "📊 Statistiche", "ℹ️ Info"])
+    page = st.radio("Vai a:", ["🎮 Gioca", "📚 Studio", "🎯 Studio Approfondito", "🔄 Ripasso", "📊 Statistiche", "ℹ️ Info"])
     
     if st.session_state.game_started:
         st.markdown("---")
@@ -999,6 +1356,96 @@ elif page == "📚 Studio":
                 st.rerun()
 
 # Pagina Ripasso
+elif page == "🎯 Studio Approfondito":
+    st.header("🎯 Studio Approfondito")
+    st.info("💡 Continuerai fino a quando non padroneggi TUTTE le parole!")
+    
+    # Selezione tipo di gioco
+    game_type = st.selectbox("Scegli cosa studiare:", ["Nomi", "Verbi", "Aggettivi"])
+    
+    # Carica le parole (usiamo un numero alto per ottenere tutte le parole disponibili)
+    words = get_words_for_study(game_type, 1000)
+    
+    if words:
+        # Selezione modalità di gioco
+        mode = st.selectbox(
+            "Modalità di gioco:",
+            ["Traduzione", "Traduzione Inversa", "Articoli", "Coniugazioni"] if game_type == "Nomi" 
+            else ["Traduzione", "Traduzione Inversa", "Coniugazioni"] if game_type == "Verbi"
+            else ["Traduzione", "Traduzione Inversa"]
+        )
+        
+        # Selezione difficoltà
+        difficulty_mode = st.radio(
+            "Modalità difficoltà:",
+            ["Casuale", "Difficoltà Fissa", "Focus"]
+        )
+        
+        difficulty_level = None
+        if difficulty_mode != "Casuale":
+            difficulty_level = st.selectbox("Livello di difficoltà:", [1, 2, 3, 4, 5])
+        
+        # Filtra le parole
+        filtered_words = get_words_by_difficulty(words, 
+                                               "casual" if difficulty_mode == "Casuale" else "fixed" if difficulty_mode == "Difficoltà Fissa" else "focus", 
+                                               difficulty_level)
+        
+        if filtered_words:
+            # Selezione numero di parole - ora mostra tutte le parole disponibili
+            max_words = len(filtered_words)  # Usa tutte le parole disponibili nel filtro
+            study_count = st.slider("Quante parole studiare:", 1, max_words, min(10, max_words))
+            
+            st.info(f"📊 Parole disponibili: {len(filtered_words)} | Selezionate: {study_count}")
+            
+            if st.button("🎯 Inizia Studio Approfondito", type="primary"):
+                # Mescola e seleziona le parole
+                import random
+                random.shuffle(filtered_words)
+                selected_words = filtered_words[:study_count]
+                
+                # Inizializza stato per studio approfondito
+                st.session_state.deep_study = {
+                    'words': selected_words,
+                    'game_type': game_type,
+                    'mode': mode,
+                    'word_difficulty': {i: 0 for i, word in enumerate(selected_words)},
+                    'words_to_master': list(enumerate(selected_words)),
+                    'round_number': 1,
+                    'total_questions': 0,
+                    'current_word_idx': 0,
+                    'current_word_attempts': 0,
+                    'mastered_words': set(),
+                    'round_in_progress': True,
+                    'round_results': {},
+                    'current_round_words': list(enumerate(selected_words)),
+                    'total_round_words': len(selected_words),  # Traccia il numero totale di parole nel round
+                    'round_attempts': {},  # Traccia i tentativi per parola nel round corrente
+                    'total_attempts': {i: 0 for i, word in enumerate(selected_words)},  # Traccia i tentativi totali per parola
+                    'first_try_mastered': set(),  # Traccia le parole padroneggiate al primo tentativo
+                    'round_history': {}  # Traccia i risultati per ogni round
+                }
+                st.session_state.deep_study_started = True
+                st.session_state.last_feedback = None  # Reset del feedback
+                st.rerun()
+        
+        else:
+            st.warning("❌ Nessuna parola disponibile per i criteri selezionati.")
+    
+    else:
+        st.error("❌ Errore nel caricamento delle parole.")
+
+# Gestione gioco studio approfondito
+if st.session_state.deep_study_started and st.session_state.deep_study:
+    deep_study = st.session_state.deep_study
+    
+    # Controlla se ci sono ancora parole da padroneggiare
+    if not deep_study['words_to_master']:
+        # Tutte le parole sono state padroneggiate - mostra risultati
+        show_deep_study_results(deep_study)
+    else:
+        # Continua il gioco
+        play_deep_study_game(deep_study)
+
 elif page == "🔄 Ripasso":
     if not st.session_state.game_started:
         st.header("🔄 Modalità Ripasso")
