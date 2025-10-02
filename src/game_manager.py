@@ -19,57 +19,91 @@ class GameManager:
         self.total_count = 0
     
     def start(self):
-        """Avvia il gioco"""
+        """Avvia il gioco con loop principale"""
         self._print_welcome()
         
-        # Scelta modalità principale
-        main_mode = self._choose_main_mode()
-        
-        if main_mode == 'statistiche':
-            self.stats.show_dashboard()
-            
-            # Chiedi se esportare
-            export = input("\n📥 Vuoi esportare le statistiche? (s/n): ").strip().lower()
-            if export == 's':
-                self.stats.export_statistics()
-            return
-        
-        # Scelta categoria
-        game_type = self._choose_game_type()
-        if not game_type:
-            return
-        
-        if main_mode == 'ripasso':
-            # Modalità ripasso errori
-            mode = self._choose_mode(game_type)
-            if not mode:
-                return
-            self.review.start_review(game_type, mode)
-            return
-        
-        if main_mode == 'studio':
-            # Modalità studio
-            self._start_study_mode(game_type)
-            return
-        
-        # Modalità normale
-        # Carica i dati
-        words = self._load_words(game_type)
-        if not words:
-            return
-        
-        print(f"\n✅ Caricati {len(words)} {game_type.lower()}")
-        
-        # Scelta modalità
-        mode = self._choose_mode(game_type)
-        if not mode:
-            return
-        
-        # Avvia il gioco
-        self._play(words, game_type, mode)
-        
-        # Mostra risultati
-        self._show_results(game_type, mode)
+        while True:
+            try:
+                # Scelta modalità principale
+                main_mode = self._choose_main_mode()
+                
+                if main_mode == 'statistiche':
+                    self.stats.show_dashboard()
+                    
+                    # Chiedi se esportare
+                    export = input("\n📥 Vuoi esportare le statistiche? (s/n): ").strip().lower()
+                    if export == 's':
+                        self.stats.export_statistics()
+                    continue
+                
+                if main_mode == 'esci':
+                    print("\n👋 Grazie per aver giocato! Auf Wiedersehen!")
+                    break
+                
+                # Scelta categoria
+                game_type = self._choose_game_type()
+                if not game_type:
+                    continue
+                
+                if main_mode == 'ripasso':
+                    # Modalità ripasso errori
+                    mode = self._choose_mode(game_type)
+                    if not mode:
+                        continue
+                    self.review.start_review(game_type, mode)
+                    continue
+                
+                if main_mode == 'studio':
+                    # Modalità studio
+                    self._start_study_mode(game_type)
+                    continue
+                
+                # Modalità normale
+                # Carica i dati
+                words = self._load_words(game_type)
+                if not words:
+                    continue
+                
+                print(f"\n✅ Caricati {len(words)} {game_type.lower()}")
+                
+                # Scelta modalità
+                mode = self._choose_mode(game_type)
+                if not mode:
+                    continue
+                
+                # Scelta difficoltà
+                difficulty_mode, difficulty_level = self._choose_difficulty(words)
+                filtered_words = self.loader.get_words_by_difficulty(words, difficulty_mode, difficulty_level)
+                
+                if not filtered_words:
+                    print("❌ Nessuna parola disponibile per i criteri selezionati.")
+                    continue
+                
+                print(f"✅ Selezionate {len(filtered_words)} parole per il gioco")
+                
+                # Avvia il gioco
+                self._play(filtered_words, game_type, mode)
+                
+                # Mostra risultati
+                self._show_results(game_type, mode)
+                
+            except KeyboardInterrupt:
+                print("\n\n👋 Gioco interrotto. Vuoi continuare? (s/n): ", end="")
+                try:
+                    response = input().strip().lower()
+                    if response != 's':
+                        break
+                except:
+                    break
+            except Exception as e:
+                print(f"\n❌ Errore imprevisto: {e}")
+                print("Vuoi continuare? (s/n): ", end="")
+                try:
+                    response = input().strip().lower()
+                    if response != 's':
+                        break
+                except:
+                    break
     
     def _print_welcome(self):
         """Stampa il messaggio di benvenuto"""
@@ -85,20 +119,22 @@ class GameManager:
             print("2. Modalità studio")
             print("3. Ripasso errori")
             print("4. Visualizza statistiche")
+            print("5. Esci")
             
-            choice = input("\nScelta (1/2/3/4): ").strip()
+            choice = input("\nScelta (1/2/3/4/5): ").strip()
             
             modes = {
                 '1': 'normale',
                 '2': 'studio',
                 '3': 'ripasso',
-                '4': 'statistiche'
+                '4': 'statistiche',
+                '5': 'esci'
             }
             
             if choice in modes:
                 return modes[choice]
             else:
-                print("❌ Comando non valido! Scegli tra 1, 2, 3 o 4.")
+                print("❌ Comando non valido! Scegli tra 1, 2, 3, 4 o 5.")
     
     def _start_study_mode(self, game_type):
         """Avvia la modalità studio"""
@@ -126,9 +162,17 @@ class GameManager:
             except ValueError:
                 print("❌ Comando non valido! Inserisci un numero valido (es. 5)")
         
+        # Scelta difficoltà per lo studio
+        difficulty_mode, difficulty_level = self._choose_difficulty(words)
+        filtered_words = self.loader.get_words_by_difficulty(words, difficulty_mode, difficulty_level)
+        
+        if not filtered_words:
+            print("❌ Nessuna parola disponibile per i criteri selezionati.")
+            return
+        
         # Mescola e seleziona le parole
-        random.shuffle(words)
-        study_words = words[:study_count]
+        random.shuffle(filtered_words)
+        study_words = filtered_words[:study_count]
         
         # Mostra l'elenco di studio
         self._show_study_list(study_words, game_type)
@@ -153,7 +197,7 @@ class GameManager:
         print("="*50)
         
         for i, word in enumerate(words, 1):
-            print(f"\n{i:2d}. {word.italian} → {word.german}")
+            print(f"\n{i:2d}. {word.italian} → {word.german} (Livello {word.frequency})")
             
             if game_type == 'Nomi' and hasattr(word, 'article'):
                 print(f"    Articolo: {word.article}")
@@ -193,31 +237,96 @@ class GameManager:
         while True:
             print("\nScegli modalità:")
             print("1. Traduzione (Italiano → Tedesco)")
+            print("2. Traduzione Inversa (Tedesco → Italiano)")
             
             if game_type == 'Nomi':
-                print("2. Articoli (der/die/das)")
-                valid_choices = ['1', '2']
+                print("3. Articoli (der/die/das)")
+                valid_choices = ['1', '2', '3']
             elif game_type == 'Verbi':
-                print("2. Coniugazioni (Präteritum/Participio)")
-                valid_choices = ['1', '2']
+                print("3. Coniugazioni (Präteritum/Participio)")
+                valid_choices = ['1', '2', '3']
             else:  # Aggettivi
-                valid_choices = ['1']
+                valid_choices = ['1', '2']
             
-            choice = input("\nModalità (1/2): ").strip()
+            choice = input(f"\nModalità ({'/'.join(valid_choices)}): ").strip()
             
             if choice not in valid_choices:
                 if game_type == 'Aggettivi':
-                    print("❌ Comando non valido! Scegli 1 (solo traduzione disponibile).")
-                else:
                     print("❌ Comando non valido! Scegli tra 1 o 2.")
+                else:
+                    print("❌ Comando non valido! Scegli tra 1, 2 o 3.")
                 continue
             
             if choice == '1':
                 return 'Traduzione'
-            elif choice == '2' and game_type == 'Nomi':
+            elif choice == '2':
+                return 'Traduzione Inversa'
+            elif choice == '3' and game_type == 'Nomi':
                 return 'Articoli'
-            elif choice == '2' and game_type == 'Verbi':
+            elif choice == '3' and game_type == 'Verbi':
                 return 'Coniugazioni'
+    
+    def _choose_difficulty(self, words):
+        """Chiede la modalità di difficoltà"""
+        print("\nScegli modalità difficoltà:")
+        print("1. Casuale (tutte le parole)")
+        print("2. Difficoltà Fissa (frequenza ≤ livello)")
+        print("3. Focus (solo livello specifico)")
+        
+        while True:
+            choice = input("\nModalità difficoltà (1/2/3): ").strip()
+            
+            if choice == '1':
+                return 'casual', None
+            elif choice == '2':
+                return self._choose_fixed_difficulty(words)
+            elif choice == '3':
+                return self._choose_focus_difficulty(words)
+            else:
+                print("❌ Comando non valido! Scegli tra 1, 2 o 3.")
+    
+    def _choose_fixed_difficulty(self, words):
+        """Chiede il livello per difficoltà fissa"""
+        # Mostra statistiche sulla distribuzione
+        stats = self.loader.get_difficulty_stats(words)
+        print(f"\n📊 Distribuzione difficoltà:")
+        for level in sorted(stats.keys()):
+            print(f"   Livello {level}: {stats[level]} parole")
+        
+        while True:
+            try:
+                level = int(input("\nLivello massimo di difficoltà (1-5): ").strip())
+                if 1 <= level <= 5:
+                    filtered_words = self.loader.get_words_by_difficulty(words, 'fixed', level)
+                    print(f"✅ Selezionate {len(filtered_words)} parole con frequenza ≤ {level}")
+                    return 'fixed', level
+                else:
+                    print("❌ Livello deve essere tra 1 e 5.")
+            except ValueError:
+                print("❌ Inserisci un numero valido.")
+    
+    def _choose_focus_difficulty(self, words):
+        """Chiede il livello per modalità focus"""
+        # Mostra statistiche sulla distribuzione
+        stats = self.loader.get_difficulty_stats(words)
+        print(f"\n📊 Distribuzione difficoltà:")
+        for level in sorted(stats.keys()):
+            print(f"   Livello {level}: {stats[level]} parole")
+        
+        while True:
+            try:
+                level = int(input("\nLivello di focus (1-5): ").strip())
+                if 1 <= level <= 5:
+                    filtered_words = self.loader.get_words_by_difficulty(words, 'focus', level)
+                    if filtered_words:
+                        print(f"✅ Selezionate {len(filtered_words)} parole di livello {level}")
+                        return 'focus', level
+                    else:
+                        print(f"❌ Nessuna parola trovata per il livello {level}.")
+                else:
+                    print("❌ Livello deve essere tra 1 e 5.")
+            except ValueError:
+                print("❌ Inserisci un numero valido.")
     
     def _load_words(self, game_type):
         """Carica le parole in base al tipo di gioco"""
@@ -242,8 +351,8 @@ class GameManager:
         for i, word in enumerate(words, 1):
             print(f"\n📝 Domanda {i}:")
             
-            if mode == 'Traduzione':
-                result = self._ask_translation(word)
+            if mode in ['Traduzione', 'Traduzione Inversa']:
+                result = self._ask_translation(word, mode)
             elif mode == 'Articoli':
                 result = self._ask_article(word)
             elif mode == 'Coniugazioni':
@@ -260,32 +369,52 @@ class GameManager:
         
         print("\n" + "="*50)
     
-    def _ask_translation(self, word):
+    def _ask_translation(self, word, mode='Traduzione'):
         """Chiede la traduzione di una parola"""
-        print(f"Come si dice '{word.italian}' in tedesco?")
+        if mode == 'Traduzione Inversa':
+            print(f"Come si dice '{word.german}' in italiano?")
+            correct_answer = word.italian
+        else:
+            print(f"Come si dice '{word.italian}' in tedesco?")
+            correct_answer = word.german
+        
         user_answer = input("➤ La tua risposta: ").strip()
         
         # Controlla se l'utente vuole terminare
         if user_answer.lower() == 'n':
             return 'quit'
         
-        is_correct, penalty, feedback = word.check_answer(user_answer)
-        print(feedback)
-        
-        self.total_count += 1
-        
-        if is_correct:
+        # Usa il sistema di punteggio corretto
+        if user_answer.strip() == correct_answer.strip():
+            print("✅ CORRETTO!")
+            self.total_count += 1
             self.correct_count += 1
+            return True
         else:
+            # Controlla errori di maiuscola per traduzione inversa
+            if mode == 'Traduzione Inversa':
+                if user_answer.strip().lower() == correct_answer.strip().lower():
+                    print(f"⚠️ QUASI! Attenzione alle maiuscole: {correct_answer}")
+                    penalty = 0.5
+                else:
+                    print(f"❌ SBAGLIATO! Risposta corretta: {correct_answer}")
+                    penalty = 1.0
+            else:
+                # Logica originale per traduzione normale
+                is_correct, penalty, feedback = word.check_answer(user_answer)
+                print(feedback)
+            
+            self.total_count += 1
+            
             self.errors.append({
                 'word_german': word.german,
                 'word_italian': word.italian,
                 'user_answer': user_answer,
-                'correct_answer': word.german,
+                'correct_answer': correct_answer,
                 'penalty': penalty
             })
-        
-        return is_correct
+            
+            return False
     
     def _ask_article(self, word):
         """Chiede l'articolo di un sostantivo"""
@@ -360,13 +489,14 @@ class GameManager:
             print("\n❌ Nessuna domanda risposta.")
             return
         
-        # Calcola punteggio effettivo (considerando penalità)
-        total_errors = sum(err['penalty'] for err in self.errors)
-        effective_score = self.total_count - total_errors
+        # Calcola punteggio cumulativo (sistema corretto)
+        total_penalties = sum(err['penalty'] for err in self.errors)
+        effective_score = self.total_count - total_penalties
         success_rate = (effective_score / self.total_count * 100)
         
         print(f"\n✅ Risposte corrette: {self.correct_count}/{self.total_count}")
         print(f"❌ Errori totali: {len(self.errors)}")
+        print(f"📈 Punteggio finale: {effective_score:.1f}/{self.total_count}")
         print(f"📈 Percentuale di successo: {success_rate:.1f}%")
         
         # Mostra errori
@@ -391,3 +521,12 @@ class GameManager:
         
         print("\n💾 Partita salvata nel database!")
         print("="*50)
+        
+        # Reset dello stato per la prossima partita
+        self._reset_game_state()
+    
+    def _reset_game_state(self):
+        """Resetta lo stato del gioco per una nuova partita"""
+        self.errors = []
+        self.correct_count = 0
+        self.total_count = 0

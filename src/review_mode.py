@@ -87,8 +87,8 @@ class ReviewMode:
         for i, word in enumerate(words, 1):
             print(f"\n📝 Parola {i}/{len(words)}:")
             
-            if mode == 'Traduzione':
-                result = self._ask_translation(word)
+            if mode in ['Traduzione', 'Traduzione Inversa']:
+                result = self._ask_translation(word, mode)
             elif mode == 'Articoli' and game_type == 'Nomi':
                 result = self._ask_article(word)
             elif mode == 'Coniugazioni' and game_type == 'Verbi':
@@ -106,33 +106,53 @@ class ReviewMode:
         # Mostra risultati
         self._show_results(game_type, mode)
     
-    def _ask_translation(self, word):
+    def _ask_translation(self, word, mode='Traduzione'):
         """Chiede la traduzione"""
-        print(f"Come si dice '{word.italian}' in tedesco?")
+        if mode == 'Traduzione Inversa':
+            print(f"Come si dice '{word.german}' in italiano?")
+            correct_answer = word.italian
+        else:
+            print(f"Come si dice '{word.italian}' in tedesco?")
+            correct_answer = word.german
+        
         user_answer = input("➤ La tua risposta: ").strip()
         
         # Controlla se l'utente vuole terminare
         if user_answer.lower() == 'n':
             return 'quit'
         
-        correct_word = word.german if hasattr(word, 'german') else word.verb if hasattr(word, 'verb') else word.adjective
-        is_correct, penalty, feedback = word.check_answer(user_answer)
-        print(feedback)
-        
-        self.total_count += 1
-        
-        if is_correct:
+        # Usa il sistema di punteggio corretto
+        if user_answer.strip() == correct_answer.strip():
+            print("✅ CORRETTO!")
+            self.total_count += 1
             self.correct_count += 1
+            return True
         else:
+            # Controlla errori di maiuscola per traduzione inversa
+            if mode == 'Traduzione Inversa':
+                if user_answer.strip().lower() == correct_answer.strip().lower():
+                    print(f"⚠️ QUASI! Attenzione alle maiuscole: {correct_answer}")
+                    penalty = 0.5
+                else:
+                    print(f"❌ SBAGLIATO! Risposta corretta: {correct_answer}")
+                    penalty = 1.0
+            else:
+                # Logica originale per traduzione normale
+                correct_word = word.german if hasattr(word, 'german') else word.verb if hasattr(word, 'verb') else word.adjective
+                is_correct, penalty, feedback = word.check_answer(user_answer)
+                print(feedback)
+            
+            self.total_count += 1
+            
             self.errors.append({
-                'word_german': correct_word,
+                'word_german': word.german,
                 'word_italian': word.italian,
                 'user_answer': user_answer,
-                'correct_answer': correct_word,
+                'correct_answer': correct_answer,
                 'penalty': penalty
             })
-        
-        return is_correct
+            
+            return False
     
     def _ask_article(self, word):
         """Chiede l'articolo"""
@@ -207,12 +227,13 @@ class ReviewMode:
             print("\n❌ Nessuna domanda risposta.")
             return
         
-        total_errors = sum(err['penalty'] for err in self.errors)
-        effective_score = self.total_count - total_errors
+        total_penalties = sum(err['penalty'] for err in self.errors)
+        effective_score = self.total_count - total_penalties
         success_rate = (effective_score / self.total_count * 100)
         
         print(f"\n✅ Risposte corrette: {self.correct_count}/{self.total_count}")
         print(f"❌ Errori totali: {len(self.errors)}")
+        print(f"📈 Punteggio finale: {effective_score:.1f}/{self.total_count}")
         print(f"📈 Percentuale di successo: {success_rate:.1f}%")
         
         # Mostra errori
@@ -237,3 +258,12 @@ class ReviewMode:
         
         print("\n💾 Sessione di ripasso salvata!")
         print("="*50)
+        
+        # Reset dello stato per la prossima sessione
+        self._reset_game_state()
+    
+    def _reset_game_state(self):
+        """Resetta lo stato del gioco per una nuova sessione"""
+        self.errors = []
+        self.correct_count = 0
+        self.total_count = 0
