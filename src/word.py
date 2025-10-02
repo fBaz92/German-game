@@ -10,9 +10,10 @@ from .normalization import compare_german_words
 class Word:
     """Classe base per tutte le parole"""
     
-    def __init__(self, german, italian):
+    def __init__(self, german, italian, frequency=1):
         self.german = german
         self.italian = italian
+        self.frequency = int(frequency)  # Frequenza di uso (1 = molto frequente, 5 = raro)
     
     def check_answer(self, user_answer):
         """
@@ -52,8 +53,8 @@ class Word:
 class Noun(Word):
     """Sostantivo tedesco"""
     
-    def __init__(self, german, article, plural, italian):
-        super().__init__(german, italian)
+    def __init__(self, german, article, plural, italian, frequency=1):
+        super().__init__(german, italian, frequency)
         self.article = article  # der, die, das
         self.plural = plural
     
@@ -78,8 +79,8 @@ class Verb(Word):
     """Verbo tedesco"""
     
     def __init__(self, german, regular, italian, prateritum, participio, 
-                 perfetto, caso, riflessivo):
-        super().__init__(german, italian)
+                 perfetto, caso, riflessivo, frequency=1):
+        super().__init__(german, italian, frequency)
         self.regular = regular
         self.prateritum = prateritum
         self.participio = participio
@@ -94,8 +95,8 @@ class Verb(Word):
 class Adjective(Word):
     """Aggettivo tedesco"""
     
-    def __init__(self, german, comparative, superlative, italian):
-        super().__init__(german, italian)
+    def __init__(self, german, comparative, superlative, italian, frequency=1):
+        super().__init__(german, italian, frequency)
         self.comparative = comparative
         self.superlative = superlative
     

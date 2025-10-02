@@ -77,8 +77,8 @@ def start_game(game_type, mode, num_questions=10, words_to_use=None):
     st.session_state.graded_q = set()
 
 
-def get_words_for_study(game_type, num_words):
-    """Ottiene le parole per la modalità studio"""
+def get_words_for_study(game_type, num_words, difficulty_mode='casual', difficulty_level=None):
+    """Ottiene le parole per la modalità studio con filtro per difficoltà"""
     loader = DataLoader()
     
     if game_type == "Nomi":
@@ -88,9 +88,12 @@ def get_words_for_study(game_type, num_words):
     else:
         words = loader.load_adjectives()
     
+    # Filtra per difficoltà
+    filtered_words = loader.get_words_by_difficulty(words, difficulty_mode, difficulty_level)
+    
     # Mescola e seleziona le parole
-    random.shuffle(words)
-    return words[:num_words]
+    random.shuffle(filtered_words)
+    return filtered_words[:num_words]
 
 
 def get_review_words(game_type):
@@ -142,12 +145,24 @@ def show_enhanced_stats():
     weekly_stats = defaultdict(lambda: {'games': 0, 'total_success': 0})
     
     for game in games:
-        timestamp = datetime.fromisoformat(game[1])
-        week_start = timestamp - timedelta(days=timestamp.weekday())
-        week_key = week_start.strftime("%Y-%m-%d")
-        
-        weekly_stats[week_key]['games'] += 1
-        weekly_stats[week_key]['total_success'] += game[6]
+        try:
+            # Gestisce diversi formati di timestamp
+            if isinstance(game[1], str):
+                timestamp = datetime.fromisoformat(game[1])
+            elif isinstance(game[1], datetime):
+                timestamp = game[1]
+            else:
+                # Se non è né stringa né datetime, salta questo record
+                continue
+                
+            week_start = timestamp - timedelta(days=timestamp.weekday())
+            week_key = week_start.strftime("%Y-%m-%d")
+            
+            weekly_stats[week_key]['games'] += 1
+            weekly_stats[week_key]['total_success'] += game[6]
+        except (ValueError, TypeError) as e:
+            # Salta record con timestamp non validi
+            continue
     
     # Mostra ultime 4 settimane
     sorted_weeks = sorted(weekly_stats.items(), reverse=True)[:4]
@@ -207,7 +222,18 @@ def show_enhanced_stats():
     st.subheader("🔥 Streak e Record")
     
     # Calcola streak corrente
-    dates = [datetime.fromisoformat(game[1]).date() for game in games]
+    dates = []
+    for game in games:
+        try:
+            if isinstance(game[1], str):
+                timestamp = datetime.fromisoformat(game[1])
+            elif isinstance(game[1], datetime):
+                timestamp = game[1]
+            else:
+                continue
+            dates.append(timestamp.date())
+        except (ValueError, TypeError):
+            continue
     dates = sorted(set(dates), reverse=True)
     
     current_streak = 0
@@ -238,13 +264,32 @@ def show_enhanced_stats():
         st.metric("Miglior Streak", f"{longest_streak} giorni")
     with col3:
         week_ago = datetime.now() - timedelta(days=7)
-        recent_games = [g for g in games if datetime.fromisoformat(g[1]) > week_ago]
+        recent_games = []
+        for g in games:
+            try:
+                if isinstance(g[1], str):
+                    timestamp = datetime.fromisoformat(g[1])
+                elif isinstance(g[1], datetime):
+                    timestamp = g[1]
+                else:
+                    continue
+                if timestamp > week_ago:
+                    recent_games.append(g)
+            except (ValueError, TypeError):
+                continue
         st.metric("Partite Questa Settimana", len(recent_games))
     
     # Storico partite
     st.subheader("📋 Storico Partite Recenti")
     df = pd.DataFrame(games, columns=['ID', 'Data', 'Tipo', 'Modalità', 'Domande', 'Corrette', 'Successo%'])
-    df['Data'] = pd.to_datetime(df['Data']).dt.strftime('%Y-%m-%d %H:%M')
+    
+    # Gestisce diversi formati di timestamp per la visualizzazione
+    try:
+        df['Data'] = pd.to_datetime(df['Data']).dt.strftime('%Y-%m-%d %H:%M')
+    except Exception:
+        # Se la conversione fallisce, mostra i timestamp come sono
+        pass
+    
     st.dataframe(df.head(20), use_container_width=True)
     
     # Pulsante per esportare
@@ -254,7 +299,7 @@ def show_enhanced_stats():
         st.success(f"Statistiche esportate in {filename}!")
 
 
-def check_answer(user_answer, correct_answer, is_articles=False, is_conjugation=False):
+def check_answer(user_answer, correct_answer, is_articles=False, is_conjugation=False, is_reverse_translation=False):
     """Verifica la risposta e calcola la penalità"""
     if user_answer.strip() == correct_answer.strip():
         return True, 0.0
@@ -265,20 +310,27 @@ def check_answer(user_answer, correct_answer, is_articles=False, is_conjugation=
             return False, 0.5  # Mezzo errore per maiuscola nelle coniugazioni
         return False, 1.0  # Errore completo per coniugazioni
     
-    # Controlla errori di maiuscola nei sostantivi (solo traduzione)
-    if st.session_state.game_type == "Nomi" and not is_articles:
+    # Per traduzione inversa (tedesco → italiano), confronto più flessibile
+    if is_reverse_translation:
+        if user_answer.strip().lower() == correct_answer.strip().lower():
+            return False, 0.5  # Mezzo errore per maiuscola nella traduzione inversa
+        return False, 1.0  # Errore completo per traduzione inversa
+    
+    # Controlla errori di maiuscola nei sostantivi (solo traduzione normale italiano → tedesco)
+    if st.session_state.game_type == "Nomi" and not is_articles and not is_reverse_translation:
         if user_answer.strip().lower() == correct_answer.strip().lower():
             return False, 1.0  # Errore completo per maiuscola
     
-    # Controlla errori umlaut
-    umlaut_map = {'ä': 'a', 'ö': 'o', 'ü': 'u', 'Ä': 'A', 'Ö': 'O', 'Ü': 'U', 'ß': 'ss'}
-    user_normalized = user_answer
-    correct_normalized = correct_answer
-    for umlaut, replacement in umlaut_map.items():
-        user_normalized = user_normalized.replace(umlaut, replacement)
-        correct_normalized = correct_normalized.replace(umlaut, replacement)
-    if user_normalized.strip() == correct_normalized.strip():
-        return False, 0.5  # Mezzo errore per umlaut
+    # Controlla errori umlaut (solo per traduzione tedesco)
+    if not is_reverse_translation:
+        umlaut_map = {'ä': 'a', 'ö': 'o', 'ü': 'u', 'Ä': 'A', 'Ö': 'O', 'Ü': 'U', 'ß': 'ss'}
+        user_normalized = user_answer
+        correct_normalized = correct_answer
+        for umlaut, replacement in umlaut_map.items():
+            user_normalized = user_normalized.replace(umlaut, replacement)
+            correct_normalized = correct_normalized.replace(umlaut, replacement)
+        if user_normalized.strip() == correct_normalized.strip():
+            return False, 0.5  # Mezzo errore per umlaut
     
     return False, 1.0  # Errore completo
 
@@ -370,16 +422,18 @@ if page == "🎮 Gioca":
             if game_type == "Nomi":
                 mode = st.selectbox(
                     "Modalità",
-                    ["Traduzione", "Articoli (der/die/das)"]
+                    ["Traduzione", "Traduzione Inversa", "Articoli (der/die/das)"]
                 )
             elif game_type == "Verbi":
                 mode = st.selectbox(
                     "Modalità",
-                    ["Traduzione", "Coniugazioni (Präteritum/Participio)"]
+                    ["Traduzione", "Traduzione Inversa", "Coniugazioni (Präteritum/Participio)"]
                 )
             else:  # Aggettivi
-                mode = "Traduzione"
-                st.selectbox("Modalità", ["Traduzione"], disabled=True)
+                mode = st.selectbox(
+                    "Modalità",
+                    ["Traduzione", "Traduzione Inversa"]
+                )
         
         num_questions = st.slider("Numero di domande", 5, 100, 10)
         
@@ -403,6 +457,7 @@ if page == "🎮 Gioca":
             # Determina il tipo di modalità
             is_articles = st.session_state.mode.startswith("Articoli")
             is_conjugations = st.session_state.mode.startswith("Coniugazioni")
+            is_reverse_translation = st.session_state.mode == "Traduzione Inversa"
             
             # Mostra la domanda
             if is_articles:  # Articoli
@@ -420,7 +475,11 @@ if page == "🎮 Gioca":
                     question_text = f"{word.german} ({word.italian})"
                     correct_answer = word.participio
                     st.info(f"**Participio passato di:** {question_text}")
-            else:  # Traduzione
+            elif is_reverse_translation:  # Traduzione Inversa (tedesco → italiano)
+                question_text = word.german
+                correct_answer = word.italian
+                st.info(f"**Traduci in italiano:** {question_text}")
+            else:  # Traduzione normale (italiano → tedesco)
                 question_text = word.italian
                 correct_answer = word.german
                 st.info(f"**Traduci in tedesco:** {question_text}")
@@ -453,7 +512,7 @@ if page == "🎮 Gioca":
                         )
                         submitted = st.form_submit_button("✅ Verifica (Invio)")
                         if submitted:
-                            ok, penalty = check_answer(user_answer, correct_answer, is_articles, is_conjugations)
+                            ok, penalty = check_answer(user_answer, correct_answer, is_articles, is_conjugations, is_reverse_translation)
                             if ok:
                                 st.session_state.score += 1
                                 st.session_state.feedback_by_q[current_idx] = {
@@ -610,23 +669,82 @@ elif page == "📚 Studio":
             if game_type == "Nomi":
                 mode = st.selectbox(
                     "Modalità di gioco",
-                    ["Traduzione", "Articoli (der/die/das)"],
+                    ["Traduzione", "Traduzione Inversa", "Articoli (der/die/das)"],
                     key="study_mode"
                 )
             elif game_type == "Verbi":
                 mode = st.selectbox(
                     "Modalità di gioco",
-                    ["Traduzione", "Coniugazioni (Präteritum/Participio)"],
+                    ["Traduzione", "Traduzione Inversa", "Coniugazioni (Präteritum/Participio)"],
                     key="study_mode"
                 )
             else:  # Aggettivi
-                mode = "Traduzione"
-                st.selectbox("Modalità di gioco", ["Traduzione"], disabled=True, key="study_mode")
+                mode = st.selectbox(
+                    "Modalità di gioco",
+                    ["Traduzione", "Traduzione Inversa"],
+                    key="study_mode"
+                )
+        
+        # Selezione modalità difficoltà
+        st.subheader("🎯 Modalità Difficoltà")
+        
+        difficulty_mode = st.radio(
+            "Scegli come selezionare le parole:",
+            ["🎲 Casuale", "📊 Difficoltà Fissa", "🎯 Focus"],
+            help="Casuale: parole completamente casuali\nDifficoltà Fissa: parole con frequenza ≤ al livello\nFocus: solo parole del livello selezionato"
+        )
+        
+        difficulty_level = None
+        if difficulty_mode == "📊 Difficoltà Fissa":
+            difficulty_level = st.selectbox(
+                "Livello massimo di difficoltà:",
+                [1, 2, 3, 4, 5],
+                format_func=lambda x: f"Livello {x} (frequenza ≤ {x})",
+                help="Include tutte le parole con frequenza ≤ al livello selezionato"
+            )
+            difficulty_mode = 'fixed'
+        elif difficulty_mode == "🎯 Focus":
+            difficulty_level = st.selectbox(
+                "Livello di focus:",
+                [1, 2, 3, 4, 5],
+                format_func=lambda x: f"Livello {x} (frequenza = {x})",
+                help="Solo parole con frequenza = al livello selezionato"
+            )
+            difficulty_mode = 'focus'
+        else:
+            difficulty_mode = 'casual'
+        
+        # Mostra statistiche sulla distribuzione delle difficoltà
+        if game_type:
+            loader = DataLoader()
+            if game_type == "Nomi":
+                all_words = loader.load_nouns()
+            elif game_type == "Verbi":
+                all_words = loader.load_verbs()
+            else:
+                all_words = loader.load_adjectives()
+            
+            stats = loader.get_difficulty_stats(all_words)
+            
+            col1, col2, col3 = st.columns(3)
+            with col1:
+                st.metric("Totale Parole", len(all_words))
+            with col2:
+                st.metric("Livelli Disponibili", len(stats))
+            with col3:
+                if difficulty_mode == 'fixed' and difficulty_level:
+                    filtered = loader.get_words_by_difficulty(all_words, 'fixed', difficulty_level)
+                    st.metric("Parole Disponibili", len(filtered))
+                elif difficulty_mode == 'focus' and difficulty_level:
+                    filtered = loader.get_words_by_difficulty(all_words, 'focus', difficulty_level)
+                    st.metric("Parole Disponibili", len(filtered))
+                else:
+                    st.metric("Modalità", "Casuale")
         
         num_words = st.slider("Numero di parole da studiare", 5, 50, 10)
         
         if st.button("📖 Genera Lista di Studio", type="primary", use_container_width=True):
-            st.session_state.study_words = get_words_for_study(game_type, num_words)
+            st.session_state.study_words = get_words_for_study(game_type, num_words, difficulty_mode, difficulty_level)
             st.session_state.show_study_list = True
             st.rerun()
         
@@ -641,7 +759,8 @@ elif page == "📚 Studio":
                 row = {
                     'N°': i,
                     'Italiano': word.italian,
-                    'Tedesco': word.german
+                    'Tedesco': word.german,
+                    'Frequenza': f"Livello {word.frequency}"
                 }
                 
                 if game_type == 'Nomi' and hasattr(word, 'article'):
@@ -685,6 +804,7 @@ elif page == "📚 Studio":
             # Determina il tipo di modalità
             is_articles = st.session_state.mode.startswith("Articoli")
             is_conjugations = st.session_state.mode.startswith("Coniugazioni")
+            is_reverse_translation = st.session_state.mode == "Traduzione Inversa"
             
             # Mostra la domanda
             if is_articles:  # Articoli
@@ -702,7 +822,11 @@ elif page == "📚 Studio":
                     question_text = f"{word.german} ({word.italian})"
                     correct_answer = word.participio
                     st.info(f"**Participio passato di:** {question_text}")
-            else:  # Traduzione
+            elif is_reverse_translation:  # Traduzione Inversa (tedesco → italiano)
+                question_text = word.german
+                correct_answer = word.italian
+                st.info(f"**Traduci in italiano:** {question_text}")
+            else:  # Traduzione normale (italiano → tedesco)
                 question_text = word.italian
                 correct_answer = word.german
                 st.info(f"**Traduci in tedesco:** {question_text}")
@@ -735,7 +859,7 @@ elif page == "📚 Studio":
                         )
                         submitted = st.form_submit_button("✅ Verifica (Invio)")
                         if submitted:
-                            ok, penalty = check_answer(user_answer, correct_answer, is_articles, is_conjugations)
+                            ok, penalty = check_answer(user_answer, correct_answer, is_articles, is_conjugations, is_reverse_translation)
                             if ok:
                                 st.session_state.score += 1
                                 st.session_state.feedback_by_q[current_idx] = {
@@ -770,7 +894,7 @@ elif page == "📚 Studio":
                     col_a, col_b = st.columns(2)
                     with col_a:
                         if st.button("✅ Verifica", key=f"check_{current_idx}", use_container_width=True):
-                            ok, penalty = check_answer(user_answer, correct_answer, is_articles, is_conjugations)
+                            ok, penalty = check_answer(user_answer, correct_answer, is_articles, is_conjugations, is_reverse_translation)
                             if ok:
                                 st.session_state.score += 1
                                 st.session_state.feedback_by_q[current_idx] = {
@@ -889,18 +1013,21 @@ elif page == "🔄 Ripasso":
         if game_type == "Nomi":
             mode = st.selectbox(
                 "Modalità di ripasso",
-                ["Traduzione", "Articoli (der/die/das)"],
+                ["Traduzione", "Traduzione Inversa", "Articoli (der/die/das)"],
                 key="review_mode"
             )
         elif game_type == "Verbi":
             mode = st.selectbox(
                 "Modalità di ripasso",
-                ["Traduzione", "Coniugazioni (Präteritum/Participio)"],
+                ["Traduzione", "Traduzione Inversa", "Coniugazioni (Präteritum/Participio)"],
                 key="review_mode"
             )
         else:  # Aggettivi
-            mode = "Traduzione"
-            st.selectbox("Modalità di ripasso", ["Traduzione"], disabled=True, key="review_mode")
+            mode = st.selectbox(
+                "Modalità di ripasso",
+                ["Traduzione", "Traduzione Inversa"],
+                key="review_mode"
+            )
         
         if st.button("🔍 Trova Parole da Ripassare", type="primary", use_container_width=True):
             review_words = get_review_words(game_type)
@@ -937,6 +1064,7 @@ elif page == "🔄 Ripasso":
             # Determina il tipo di modalità
             is_articles = st.session_state.mode.startswith("Articoli")
             is_conjugations = st.session_state.mode.startswith("Coniugazioni")
+            is_reverse_translation = st.session_state.mode == "Traduzione Inversa"
             
             # Mostra la domanda
             if is_articles:  # Articoli
@@ -954,7 +1082,11 @@ elif page == "🔄 Ripasso":
                     question_text = f"{word.german} ({word.italian})"
                     correct_answer = word.participio
                     st.info(f"**Participio passato di:** {question_text}")
-            else:  # Traduzione
+            elif is_reverse_translation:  # Traduzione Inversa (tedesco → italiano)
+                question_text = word.german
+                correct_answer = word.italian
+                st.info(f"**Traduci in italiano:** {question_text}")
+            else:  # Traduzione normale (italiano → tedesco)
                 question_text = word.italian
                 correct_answer = word.german
                 st.info(f"**Traduci in tedesco:** {question_text}")
@@ -987,7 +1119,7 @@ elif page == "🔄 Ripasso":
                         )
                         submitted = st.form_submit_button("✅ Verifica (Invio)")
                         if submitted:
-                            ok, penalty = check_answer(user_answer, correct_answer, is_articles, is_conjugations)
+                            ok, penalty = check_answer(user_answer, correct_answer, is_articles, is_conjugations, is_reverse_translation)
                             if ok:
                                 st.session_state.score += 1
                                 st.session_state.feedback_by_q[current_idx] = {
@@ -1022,7 +1154,7 @@ elif page == "🔄 Ripasso":
                     col_a, col_b = st.columns(2)
                     with col_a:
                         if st.button("✅ Verifica", key=f"check_{current_idx}", use_container_width=True):
-                            ok, penalty = check_answer(user_answer, correct_answer, is_articles, is_conjugations)
+                            ok, penalty = check_answer(user_answer, correct_answer, is_articles, is_conjugations, is_reverse_translation)
                             if ok:
                                 st.session_state.score += 1
                                 st.session_state.feedback_by_q[current_idx] = {
@@ -1145,8 +1277,10 @@ else:
         
         **2. 📚 Modalità Studio**
         - Genera una lista di parole da studiare
-        - Studia prima di giocare
-        - Perfetta per apprendimento mirato
+        - **🎲 Casuale**: parole completamente casuali
+        - **📊 Difficoltà Fissa**: parole con frequenza ≤ al livello selezionato
+        - **🎯 Focus**: solo parole del livello di frequenza selezionato
+        - Studia prima di giocare con le parole selezionate
         
         **3. 🔄 Modalità Ripasso**
         - Ripassa le parole che hai sbagliato più spesso
@@ -1156,6 +1290,7 @@ else:
         ### 🎯 Modalità Disponibili
         
         **Traduzione**: Traduci dall'italiano al tedesco
+        **Traduzione Inversa**: Traduci dal tedesco all'italiano
         **Articoli** (solo nomi): Indovina l'articolo corretto (der/die/das)
         **Coniugazioni** (solo verbi): Präteritum e Participio passato
         
@@ -1167,10 +1302,20 @@ else:
         ### 📊 Sistema di Punteggio
         
         - ✅ **Risposta corretta**: +1 punto
-        - ❌ **Errore maiuscola** (nei nomi): -1 punto
+        - ❌ **Errore maiuscola** (nomi, traduzione normale): -1 punto
+        - ⚠️ **Errore maiuscola** (traduzione inversa, coniugazioni): -0.5 punti
         - ⚠️ **Errore umlaut** (ä, ö, ü, ß): -0.5 punti
         - ❌ **Errore completo**: -1 punto
         - 👁️ **Vedi risposta**: -1 punto
+        
+        ### 🎯 Sistema di Difficoltà
+        
+        Le parole sono classificate per frequenza d'uso (1-5):
+        - **Livello 1**: Parole molto comuni (essere, avere, tempo, etc.)
+        - **Livello 2**: Parole comuni
+        - **Livello 3**: Parole di uso medio
+        - **Livello 4**: Parole meno comuni
+        - **Livello 5**: Parole rare/specialistiche
         
         ### 📈 Statistiche Avanzate
         

@@ -24,7 +24,8 @@ class DataLoader:
                         german=row['Sostantivo'],
                         article=row['Articolo'],
                         plural=row['Plurale'],
-                        italian=row['Significato']
+                        italian=row['Significato'],
+                        frequency=row['Frequenza']
                     )
                     nouns.append(noun)
         except FileNotFoundError:
@@ -53,7 +54,8 @@ class DataLoader:
                         participio=row['Participio passato'],
                         perfetto=row['Perfetto'],
                         caso=row['Caso'],
-                        riflessivo=row['Riflessivo']
+                        riflessivo=row['Riflessivo'],
+                        frequency=row['Frequenza']
                     )
                     verbs.append(verb)
         except FileNotFoundError:
@@ -78,7 +80,8 @@ class DataLoader:
                         german=row['Aggettivo'],
                         comparative=row['Comparativo'],
                         superlative=row['Superlativo'],
-                        italian=row['Significato']
+                        italian=row['Significato'],
+                        frequency=row['Frequenza']
                     )
                     adjectives.append(adj)
         except FileNotFoundError:
@@ -89,3 +92,45 @@ class DataLoader:
             return []
         
         return adjectives
+    
+    def get_words_by_difficulty(self, words, difficulty_mode, difficulty_level=None):
+        """
+        Filtra le parole in base alla modalità di difficoltà
+        
+        Args:
+            words: lista di parole (Noun/Verb/Adjective)
+            difficulty_mode: 'casual', 'fixed', 'focus'
+            difficulty_level: livello di difficoltà (1-5) per modalità 'fixed' e 'focus'
+        
+        Returns:
+            lista di parole filtrate
+        """
+        if difficulty_mode == 'casual':
+            return words
+        
+        elif difficulty_mode == 'fixed':
+            if difficulty_level is None:
+                return words
+            # Tutte le parole con frequenza <= al livello selezionato
+            return [word for word in words if word.frequency <= difficulty_level]
+        
+        elif difficulty_mode == 'focus':
+            if difficulty_level is None:
+                return words
+            # Solo parole con frequenza = al livello selezionato
+            return [word for word in words if word.frequency == difficulty_level]
+        
+        return words
+    
+    def get_difficulty_stats(self, words):
+        """
+        Restituisce statistiche sulla distribuzione delle difficoltà
+        
+        Returns:
+            dict con conteggi per ogni livello di difficoltà
+        """
+        stats = {}
+        for word in words:
+            freq = word.frequency
+            stats[freq] = stats.get(freq, 0) + 1
+        return stats
